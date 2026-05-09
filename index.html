@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0ea5e9">
+  <!-- 🔒 검색엔진 차단 + 외부 사이트로 referrer 흘리기 방지 -->
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <meta name="referrer" content="no-referrer">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="레슨트래커">
+  <title>레슨 트래커</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif; }
+    .modal-bg { background: rgba(0,0,0,0.5); }
+    .progress-dot { transition: all 0.2s; }
+    .card-hover { transition: transform 0.15s, box-shadow 0.15s; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.08); }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 9999px; font-weight: 500; }
+    /* iOS safe area */
+    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    /* Hide scrollbar in modals on mobile */
+    .modal-content { max-height: 90vh; overflow-y: auto; }
+    @media (max-width: 640px) {
+      .modal-content { max-height: 100vh; height: 100vh; border-radius: 0 !important; }
+    }
+    .empty-state { color: #9ca3af; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-safe">
+<!-- ========== HEADER ========== -->
+<header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-slate-900">레슨 트래커</h1>
+      <p class="text-xs text-slate-500" id="header-stats">학생 0명</p>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="openSettingsModal()" class="p-2 hover:bg-slate-100 rounded-lg" title="설정">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<!-- ========== MAIN ========== -->
+<main class="max-w-5xl mx-auto px-4 py-4">
+  <!-- Alerts: 사이클 완료, 미수금 등 -->
+  <section id="alerts-section" class="space-y-2 mb-4"></section>
+  <!-- 통계 카드 -->
+  <section class="grid grid-cols-3 gap-2 mb-5">
+    <div class="bg-white rounded-xl p-3 border border-slate-200">
+      <div class="text-[11px] text-slate-500 mb-1">진행중 학생</div>
+      <div class="text-xl font-bold text-slate-900" id="stat-active">0</div>
+    </div>
+    <div class="bg-white rounded-xl p-3 border border-slate-200">
+      <div class="text-[11px] text-slate-500 mb-1">이번달 수업료</div>
+      <div class="text-xl font-bold text-emerald-600" id="stat-month-revenue">0원</div>
+    </div>
+    <div class="bg-white rounded-xl p-3 border border-slate-200">
+      <div class="text-[11px] text-slate-500 mb-1">미수금</div>
+      <div class="text-xl font-bold text-rose-600" id="stat-unpaid">0원</div>
+    </div>
+  </section>
+  <!-- 종목 필터 + 검색 -->
+  <section class="mb-4 flex gap-2 flex-wrap items-center">
+    <input id="search" type="text" placeholder="이름 검색…" class="flex-1 min-w-[150px] px-3 py-2 rounded-lg border border-slate-300 text-sm" oninput="render()">
+    <select id="sport-filter" onchange="render()" class="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+      <option value="">모든 종목</option>
+    </select>
+    <select id="status-filter" onchange="render()" class="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+      <option value="active">진행중</option>
+      <option value="completed">사이클 완료</option>
+      <option value="all">전체</option>
+    </select>
+  </section>
+  <!-- 학생 카드 그리드 -->
+  <section id="students-grid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></section>
+  <!-- 빈 상태 -->
+  <div id="empty-state" class="hidden text-center py-12 empty-state">
+    <div class="text-4xl mb-2">🎿</div>
+    <p class="font-medium">아직 등록된 학생이 없어요</p>
+    <p class="text-sm">아래 버튼으로 첫 학생을 추가해보세요</p>
+  </div>
+</main>
+<!-- ========== FAB ========== -->
+<button onclick="openAddStudentModal()" class="fixed bottom-6 right-6 z-20 bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-3xl font-light transition-colors" title="학생 추가">
+  +
+</button>
+<!-- ========== MODAL: 학생 추가/편집 ========== -->
+<div id="modal-student" class="hidden fixed inset-0 z-40 modal-bg flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="modal-content bg-white sm:rounded-2xl rounded-t-2xl w-full sm:max-w-md p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold" id="student-modal-title">학생 추가</h2>
+      <button onclick="closeModal('modal-student')" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+    </div>
+    <form id="student-form" onsubmit="event.preventDefault(); submitStudentForm();" class="space-y-3">
+      <input type="hidden" id="student-id">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">이름 *</label>
+        <input id="student-name" type="text" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">종목 *</label>
+        <select id="student-sport" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"></select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">패키지 *</label>
+          <select id="student-package" required onchange="updatePriceFromPackage()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">시작일 (첫 수업일) *</label>
+          <input id="student-start-date" type="date" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">수업료 (내 계좌)</label>
+          <input id="student-lesson-fee" type="number" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">입장료 (별도)</label>
+          <input id="student-entry-fee" type="number" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">연락처</label>
+          <input id="student-contact" type="text" placeholder="010-..." class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">보호자</label>
+          <input id="student-guardian" type="text" placeholder="어머님/아버님" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">메모</label>
+        <textarea id="student-memo" rows="2" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm"></textarea>
+      </div>
+      <div class="flex items-center gap-2 pt-1">
+        <input id="student-paid" type="checkbox" checked class="rounded">
+        <label for="student-paid" class="text-sm text-slate-700">시작일에 수업료 결제 완료</label>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="button" onclick="closeModal('modal-student')" class="flex-1 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">취소</button>
+        <button type="submit" class="flex-1 px-4 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+<!-- ========== MODAL: 학생 상세 ========== -->
+<div id="modal-detail" class="hidden fixed inset-0 z-40 modal-bg flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="modal-content bg-white sm:rounded-2xl rounded-t-2xl w-full sm:max-w-lg p-5" id="detail-content">
+    <!-- rendered by JS -->
+  </div>
+</div>
+<!-- ========== MODAL: 출석 체크 ========== -->
+<div id="modal-attend" class="hidden fixed inset-0 z-50 modal-bg flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="modal-content bg-white sm:rounded-2xl rounded-t-2xl w-full sm:max-w-sm p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold">수업 기록</h2>
+      <button onclick="closeModal('modal-attend')" class="text-slate-400 text-2xl leading-none">×</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">날짜</label>
+        <input id="attend-date" type="date" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">상태</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" onclick="setAttendStatus('attended')" data-status="attended" class="attend-status-btn px-3 py-2.5 rounded-lg border text-sm font-medium">출석 (+1)</button>
+          <button type="button" onclick="setAttendStatus('makeup')" data-status="makeup" class="attend-status-btn px-3 py-2.5 rounded-lg border text-sm font-medium">보강 (+1)</button>
+          <button type="button" onclick="setAttendStatus('missed')" data-status="missed" class="attend-status-btn px-3 py-2.5 rounded-lg border text-sm font-medium">결석</button>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">메모 (선택)</label>
+        <input id="attend-note" type="text" placeholder="여행 결석, 보강 일정 등" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button onclick="closeModal('modal-attend')" class="flex-1 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium">취소</button>
+        <button onclick="saveAttendance()" class="flex-1 px-4 py-2.5 rounded-lg bg-sky-500 text-white text-sm font-semibold">기록</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ========== MODAL: 설정 ========== -->
+<div id="modal-settings" class="hidden fixed inset-0 z-40 modal-bg flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="modal-content bg-white sm:rounded-2xl rounded-t-2xl w-full sm:max-w-md p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold">설정</h2>
+      <button onclick="closeModal('modal-settings')" class="text-slate-400 text-2xl leading-none">×</button>
+    </div>
+    <div class="space-y-5">
+      <!-- 데이터 백업 -->
+      <div>
+        <h3 class="font-semibold text-sm mb-2">데이터 백업</h3>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="exportBackup()" class="px-3 py-2.5 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">백업 받기</button>
+          <button onclick="document.getElementById('import-file').click()" class="px-3 py-2.5 rounded-lg border border-slate-300 text-sm font-medium hover:bg-slate-50">백업 불러오기</button>
+        </div>
+        <input type="file" id="import-file" accept=".json" class="hidden" onchange="importBackup(event)">
+        <p class="text-xs text-slate-500 mt-2">JSON 파일로 데이터 저장. 다른 기기로 옮길 때 사용.</p>
+      </div>
+      <!-- 종목 관리 -->
+      <div>
+        <h3 class="font-semibold text-sm mb-2">종목 관리</h3>
+        <div id="sports-list" class="space-y-1 mb-2"></div>
+        <div class="flex gap-2">
+          <input id="new-sport" type="text" placeholder="새 종목" class="flex-1 px-3 py-2 rounded-lg border border-slate-300 text-sm">
+          <button onclick="addSport()" class="px-3 py-2 rounded-lg bg-slate-100 text-sm font-medium hover:bg-slate-200">추가</button>
+        </div>
+      </div>
+      <!-- 패키지 단가 -->
+      <div>
+        <h3 class="font-semibold text-sm mb-2">패키지 단가</h3>
+        <p class="text-xs text-slate-500 mb-2">기본 단가. 학생 등록 시 자동 채워지고, 학생별로 수정 가능.</p>
+        <div id="packages-list" class="space-y-2"></div>
+      </div>
+      <!-- 잠금 -->
+      <div>
+        <h3 class="font-semibold text-sm mb-2">보안</h3>
+        <button onclick="lockNow()" class="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">🔒 지금 잠그기</button>
+        <p class="text-xs text-slate-500 mt-1">다음 접근 시 비밀번호 다시 필요</p>
+      </div>
+      <!-- 위험 -->
+      <div>
+        <h3 class="font-semibold text-sm mb-2 text-rose-600">위험</h3>
+        <button onclick="resetAll()" class="w-full px-3 py-2.5 rounded-lg border border-rose-300 text-rose-600 text-sm font-medium hover:bg-rose-50">모든 데이터 초기화</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ========== TOAST ========== -->
+<div id="toast" class="hidden fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg"></div>
+<script>
+// ============================================
+// 🔒 비밀번호 (여기를 수정하세요!)
+// ============================================
+// 이 값을 본인이 기억하기 쉬운 비밀번호로 바꾸세요.
+// 추천: 한글단어 + 숫자 + 특수문자 섞어서 8자 이상
+// 예: '파란얼음2026!', 'skate-cream-river-26', '111미터2026'
+// ⚠️ 주의: GitHub repo가 public이면 누구나 이 코드를 볼 수 있습니다.
+//          진짜 보안이 아니라 일반인 우연 차단용 + URL 비공개로 진짜 안전 확보.
+const ACCESS_PASSWORD = '파란얼음2026';
+const UNLOCK_DAYS = 30; // 한 번 잠금해제 후 며칠 동안 유지할지
+// ============================================
+// CONSTANTS & DEFAULT DATA
+// ============================================
+const STORAGE_KEY = 'lessonTrackerV1';
+const UNLOCK_KEY = 'lessonTrackerUnlocked';
+const DEFAULT_PACKAGES = [
+  { id: 'w1', label: '주1회 (4회권)',  weekly: 1, total: 4,  lessonFee: 140000, entryFee: 40000  },
+  { id: 'w2', label: '주2회 (8회권)',  weekly: 2, total: 8,  lessonFee: 210000, entryFee: 80000  },
+  { id: 'w3', label: '주3회 (12회권)', weekly: 3, total: 12, lessonFee: 300000, entryFee: 120000 },
+  { id: 'w4', label: '주4회 (16회권)', weekly: 4, total: 16, lessonFee: 390000, entryFee: 160000 },
+  { id: 'w5', label: '주5회 (20회권)', weekly: 5, total: 20, lessonFee: 480000, entryFee: 200000 },
+];
+const DEFAULT_SPORTS = ['쇼트트랙'];
+const SPORT_EMOJI = { '아이스하키': '🏒', '쇼트트랙': '⛸️', '피겨': '⛸️', '스피드': '⛸️' };
+// ============================================
+// STATE
+// ============================================
+let state = {
+  students: [],
+  sports: [...DEFAULT_SPORTS],
+  packages: DEFAULT_PACKAGES.map(p => ({...p})),
+};
+let attendCtx = { studentId: null, status: null };
+// ============================================
+// PERSISTENCE
+// ============================================
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      state.students = data.students || [];
+      state.sports = data.sports?.length ? data.sports : [...DEFAULT_SPORTS];
+      state.packages = data.packages?.length ? data.packages : DEFAULT_PACKAGES.map(p => ({...p}));
+    }
+  } catch (e) {
+    console.error('load failed', e);
+  }
+}
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+// ============================================
+// HELPERS
+// ============================================
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function fmtDate(d) { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }); }
+function fmtFullDate(d) { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('ko-KR'); }
+function fmtMoney(n) { return (n||0).toLocaleString('ko-KR') + '원'; }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function ymOf(date) { return (date||'').slice(0, 7); }
+function thisYM() { return todayISO().slice(0, 7); }
+function sportEmoji(s) { for (const k in SPORT_EMOJI) if (s.includes(k)) return SPORT_EMOJI[k]; return '🎯'; }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 2000);
+}
+function attendedCount(cycle) {
+  return cycle.lessons.filter(l => l.status === 'attended' || l.status === 'makeup').length;
+}
+function isCycleCompleted(student) {
+  const c = student.currentCycle;
+  if (!c) return false;
+  return attendedCount(c) >= c.total;
+}
+// ============================================
+// RENDER
+// ============================================
+function render() {
+  renderHeaderStats();
+  renderStats();
+  renderAlerts();
+  renderSportFilter();
+  renderStudents();
+}
+function renderHeaderStats() {
+  const active = state.students.filter(s => s.currentCycle && !isCycleCompleted(s)).length;
+  const total = state.students.length;
+  document.getElementById('header-stats').textContent = `학생 ${total}명 (진행중 ${active}명)`;
+}
+function renderStats() {
+  const active = state.students.filter(s => s.currentCycle && !isCycleCompleted(s)).length;
+  document.getElementById('stat-active').textContent = active + '명';
+  const ym = thisYM();
+  let monthRev = 0, unpaid = 0;
+  for (const s of state.students) {
+    const cycles = [...(s.history || []), ...(s.currentCycle ? [s.currentCycle] : [])];
+    for (const c of cycles) {
+      if (c.paidDate && ymOf(c.paidDate) === ym) {
+        monthRev += c.lessonFee || 0;
+      }
+      if (!c.paid) {
+        unpaid += c.lessonFee || 0;
+      }
+    }
+  }
+  document.getElementById('stat-month-revenue').textContent = fmtMoney(monthRev);
+  document.getElementById('stat-unpaid').textContent = fmtMoney(unpaid);
+}
+function renderAlerts() {
+  const sec = document.getElementById('alerts-section');
+  const alerts = [];
+  for (const s of state.students) {
+    if (s.currentCycle && isCycleCompleted(s) && !s.currentCycle.reEnrollDecided) {
+      alerts.push(`<div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm flex items-center justify-between">
+        <span>🔔 <strong>${escapeHTML(s.name)}</strong> 사이클 완료 — 재등록 의사 확인 필요</span>
+        <button onclick="openDetailModal('${s.id}')" class="text-amber-700 font-medium text-xs">→ 처리</button>
+      </div>`);
+    }
+    if (s.currentCycle && !s.currentCycle.paid) {
+      alerts.push(`<div class="bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 text-sm flex items-center justify-between">
+        <span>💸 <strong>${escapeHTML(s.name)}</strong> 미수금 ${fmtMoney(s.currentCycle.lessonFee)}</span>
+        <button onclick="markPaid('${s.id}')" class="text-rose-700 font-medium text-xs">→ 결제 처리</button>
+      </div>`);
+    }
+  }
+  sec.innerHTML = alerts.join('');
+}
+function renderSportFilter() {
+  const sel = document.getElementById('sport-filter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">모든 종목</option>' + state.sports.map(s => `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`).join('');
+  sel.value = cur;
+}
+function renderStudents() {
+  const grid = document.getElementById('students-grid');
+  const search = (document.getElementById('search').value || '').toLowerCase();
+  const sportF = document.getElementById('sport-filter').value;
+  const statusF = document.getElementById('status-filter').value;
+  let filtered = state.students.filter(s => {
+    if (search && !s.name.toLowerCase().includes(search)) return false;
+    if (sportF && s.sport !== sportF) return false;
+    if (statusF === 'active' && (!s.currentCycle || isCycleCompleted(s))) return false;
+    if (statusF === 'completed' && (!s.currentCycle || !isCycleCompleted(s))) return false;
+    return true;
+  });
+  // sort: 진행중 학생 우선, 그 안에서 최근 수업일 순
+  filtered.sort((a, b) => {
+    const aActive = a.currentCycle && !isCycleCompleted(a) ? 1 : 0;
+    const bActive = b.currentCycle && !isCycleCompleted(b) ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return a.name.localeCompare(b.name);
+  });
+  if (state.students.length === 0) {
+    document.getElementById('empty-state').classList.remove('hidden');
+    grid.innerHTML = '';
+    return;
+  }
+  document.getElementById('empty-state').classList.add('hidden');
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div class="col-span-full text-center py-8 text-sm empty-state">검색 결과 없음</div>';
+    return;
+  }
+  grid.innerHTML = filtered.map(renderStudentCard).join('');
+}
+function renderStudentCard(s) {
+  const c = s.currentCycle;
+  const attended = c ? attendedCount(c) : 0;
+  const total = c ? c.total : 0;
+  const done = c ? isCycleCompleted(s) : false;
+  const noActive = !c;
+  const lastDate = c && c.lessons.length ? c.lessons[c.lessons.length - 1].date : null;
+  const pct = total ? Math.min(100, Math.round(attended * 100 / total)) : 0;
+  let statusBadge = '';
+  if (noActive) statusBadge = '<span class="badge bg-slate-200 text-slate-600">미등록</span>';
+  else if (done) statusBadge = '<span class="badge bg-amber-100 text-amber-700">사이클 완료</span>';
+  else statusBadge = `<span class="badge bg-emerald-100 text-emerald-700">${attended}/${total}</span>`;
+  const paidBadge = c && !c.paid ? '<span class="badge bg-rose-100 text-rose-700 ml-1">미수금</span>' : '';
+  return `<div onclick="openDetailModal('${s.id}')" class="bg-white border border-slate-200 rounded-xl p-4 cursor-pointer card-hover">
+    <div class="flex items-start justify-between mb-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-xl">${sportEmoji(s.sport)}</span>
+        <div class="min-w-0">
+          <div class="font-semibold truncate">${escapeHTML(s.name)}</div>
+          <div class="text-xs text-slate-500 truncate">${escapeHTML(s.sport)}</div>
+        </div>
+      </div>
+      <div class="flex flex-col items-end gap-1 shrink-0">
+        ${statusBadge}${paidBadge}
+      </div>
+    </div>
+    ${c ? `
+    <div class="mt-2">
+      <div class="h-2 bg-slate-100 rounded-full overflow-hidden mb-1.5">
+        <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${pct}%"></div>
+      </div>
+      <div class="flex items-center justify-between text-xs text-slate-500">
+        <span>${c.label || ''}</span>
+        <span>${lastDate ? '최근 ' + fmtDate(lastDate) : '시작 ' + fmtDate(c.startDate)}</span>
+      </div>
+    </div>
+    <div class="mt-3 flex gap-1.5">
+      ${done ? `
+        <button onclick="event.stopPropagation(); reEnroll('${s.id}')" class="flex-1 px-2 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium">재등록</button>
+        <button onclick="event.stopPropagation(); markStopped('${s.id}')" class="px-2 py-1.5 rounded-lg border border-slate-300 text-slate-600 text-xs font-medium">관둠</button>
+      ` : `
+        <button onclick="event.stopPropagation(); quickAttend('${s.id}', 'attended')" class="flex-1 px-2 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium">오늘 출석</button>
+        <button onclick="event.stopPropagation(); openAttendModal('${s.id}')" class="px-2 py-1.5 rounded-lg border border-slate-300 text-slate-600 text-xs font-medium">기타</button>
+      `}
+    </div>
+    ` : `
+    <div class="mt-2 text-xs text-slate-500">사이클 없음</div>
+    <button onclick="event.stopPropagation(); reEnroll('${s.id}')" class="mt-3 w-full px-2 py-1.5 rounded-lg bg-sky-500 text-white text-xs font-medium">사이클 시작</button>
+    `}
+  </div>`;
+}
+function escapeHTML(s) {
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// ============================================
+// MODAL: 학생 추가/편집
+// ============================================
+function openAddStudentModal() {
+  document.getElementById('student-modal-title').textContent = '학생 추가';
+  document.getElementById('student-id').value = '';
+  document.getElementById('student-name').value = '';
+  document.getElementById('student-contact').value = '';
+  document.getElementById('student-guardian').value = '';
+  document.getElementById('student-memo').value = '';
+  document.getElementById('student-paid').checked = true;
+  document.getElementById('student-start-date').value = todayISO();
+  populateSportSelect('student-sport');
+  populatePackageSelect('student-package');
+  updatePriceFromPackage();
+  openModal('modal-student');
+}
+function openEditStudentModal(id) {
+  const s = state.students.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('student-modal-title').textContent = '학생 편집';
+  document.getElementById('student-id').value = s.id;
+  document.getElementById('student-name').value = s.name;
+  populateSportSelect('student-sport');
+  document.getElementById('student-sport').value = s.sport;
+  populatePackageSelect('student-package');
+  document.getElementById('student-package').value = s.currentCycle ? s.currentCycle.packageId : (state.packages[0]?.id || '');
+  document.getElementById('student-start-date').value = s.currentCycle ? s.currentCycle.startDate : todayISO();
+  document.getElementById('student-lesson-fee').value = s.currentCycle ? s.currentCycle.lessonFee : (state.packages[0]?.lessonFee || 0);
+  document.getElementById('student-entry-fee').value = s.currentCycle ? s.currentCycle.entryFee : (state.packages[0]?.entryFee || 0);
+  document.getElementById('student-contact').value = s.contact || '';
+  document.getElementById('student-guardian').value = s.guardian || '';
+  document.getElementById('student-memo').value = s.memo || '';
+  document.getElementById('student-paid').checked = s.currentCycle ? !!s.currentCycle.paid : true;
+  closeModal('modal-detail');
+  openModal('modal-student');
+}
+function populateSportSelect(id) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = state.sports.map(s => `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`).join('');
+  // 종목이 1개면 부모(label 포함) 숨김
+  if (state.sports.length <= 1) {
+    const wrapper = sel.parentElement;
+    if (wrapper) wrapper.style.display = 'none';
+    sel.value = state.sports[0] || '';
+  } else {
+    const wrapper = sel.parentElement;
+    if (wrapper) wrapper.style.display = '';
+  }
+}
+function populatePackageSelect(id) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = state.packages.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)} · ${fmtMoney(p.lessonFee)}</option>`).join('');
+}
+function updatePriceFromPackage() {
+  const pkgId = document.getElementById('student-package').value;
+  const p = state.packages.find(x => x.id === pkgId);
+  if (p) {
+    document.getElementById('student-lesson-fee').value = p.lessonFee;
+    document.getElementById('student-entry-fee').value = p.entryFee;
+  }
+}
+function submitStudentForm() {
+  const id = document.getElementById('student-id').value;
+  const name = document.getElementById('student-name').value.trim();
+  const sport = document.getElementById('student-sport').value;
+  const pkgId = document.getElementById('student-package').value;
+  const startDate = document.getElementById('student-start-date').value;
+  const lessonFee = parseInt(document.getElementById('student-lesson-fee').value) || 0;
+  const entryFee = parseInt(document.getElementById('student-entry-fee').value) || 0;
+  const contact = document.getElementById('student-contact').value.trim();
+  const guardian = document.getElementById('student-guardian').value.trim();
+  const memo = document.getElementById('student-memo').value.trim();
+  const paid = document.getElementById('student-paid').checked;
+  const pkg = state.packages.find(p => p.id === pkgId);
+  if (!pkg) { alert('패키지를 선택하세요'); return; }
+  if (id) {
+    // 편집
+    const s = state.students.find(x => x.id === id);
+    if (!s) return;
+    s.name = name; s.sport = sport; s.contact = contact; s.guardian = guardian; s.memo = memo;
+    if (s.currentCycle) {
+      // 패키지 변경 시 cycle 정보 업데이트 (단, 출석 기록은 유지)
+      if (s.currentCycle.packageId !== pkgId) {
+        s.currentCycle.packageId = pkgId;
+        s.currentCycle.label = pkg.label;
+        s.currentCycle.total = pkg.total;
+      }
+      s.currentCycle.startDate = startDate;
+      s.currentCycle.lessonFee = lessonFee;
+      s.currentCycle.entryFee = entryFee;
+      s.currentCycle.paid = paid;
+      s.currentCycle.paidDate = paid ? (s.currentCycle.paidDate || startDate) : null;
+    }
+    showToast('수정됨');
+  } else {
+    // 신규
+    const newStudent = {
+      id: uid(),
+      name, sport, contact, guardian, memo,
+      currentCycle: {
+        id: uid(),
+        packageId: pkgId, label: pkg.label, total: pkg.total,
+        startDate, lessonFee, entryFee,
+        lessons: [],
+        paid, paidDate: paid ? startDate : null,
+        reEnrollDecided: false,
+      },
+      history: [],
+      createdAt: todayISO(),
+    };
+    state.students.push(newStudent);
+    showToast('학생 추가됨');
+  }
+  save();
+  render();
+  closeModal('modal-student');
+}
+// ============================================
+// 출석 / 사이클
+// ============================================
+let detailStudentId = null;
+function openDetailModal(id) {
+  detailStudentId = id;
+  const s = state.students.find(x => x.id === id);
+  if (!s) return;
+  const c = s.currentCycle;
+  const attended = c ? attendedCount(c) : 0;
+  const total = c ? c.total : 0;
+  const done = c ? isCycleCompleted(s) : false;
+  let lessonsHTML = '';
+  if (c && c.lessons.length) {
+    lessonsHTML = c.lessons.slice().reverse().map((l, idx) => {
+      const realIdx = c.lessons.length - 1 - idx;
+      const statusLabel = { attended: '출석', makeup: '보강', missed: '결석' }[l.status] || l.status;
+      const statusColor = { attended: 'bg-emerald-100 text-emerald-700', makeup: 'bg-blue-100 text-blue-700', missed: 'bg-rose-100 text-rose-700' }[l.status] || 'bg-slate-100';
+      return `<div class="flex items-center justify-between text-sm py-1.5 border-b border-slate-100">
+        <div>
+          <span class="badge ${statusColor}">${statusLabel}</span>
+          <span class="ml-2">${fmtFullDate(l.date)}</span>
+          ${l.note ? `<span class="text-slate-500 text-xs ml-2">${escapeHTML(l.note)}</span>` : ''}
+        </div>
+        <button onclick="deleteLesson('${s.id}', ${realIdx})" class="text-slate-400 hover:text-rose-500 text-xs">삭제</button>
+      </div>`;
+    }).join('');
+  } else {
+    lessonsHTML = '<p class="text-sm text-slate-400 py-2">아직 수업 기록 없음</p>';
+  }
+  const historyHTML = (s.history || []).length ? s.history.map((h, i) => {
+    return `<div class="text-xs text-slate-600 py-1 border-b border-slate-100 last:border-0">
+      ${fmtFullDate(h.startDate)} ~ ${fmtFullDate(h.endDate)} · ${h.label} · ${fmtMoney(h.lessonFee)} ${h.paid ? '결제완료' : '미수금'}
+    </div>`;
+  }).join('') : '<p class="text-xs text-slate-400">이전 사이클 없음</p>';
+  document.getElementById('detail-content').innerHTML = `
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">${sportEmoji(s.sport)}</span>
+          <h2 class="text-xl font-bold">${escapeHTML(s.name)}</h2>
+        </div>
+        <div class="text-sm text-slate-500">${escapeHTML(s.sport)}${s.guardian ? ' · ' + escapeHTML(s.guardian) : ''}${s.contact ? ' · ' + escapeHTML(s.contact) : ''}</div>
+        ${s.memo ? `<div class="text-xs text-slate-400 mt-1">📝 ${escapeHTML(s.memo)}</div>` : ''}
+      </div>
+      <button onclick="closeModal('modal-detail')" class="text-slate-400 text-2xl leading-none">×</button>
+    </div>
+    ${c ? `
+    <div class="bg-slate-50 rounded-xl p-3 mb-3">
+      <div class="flex items-center justify-between text-sm mb-2">
+        <span class="font-semibold">${escapeHTML(c.label)}</span>
+        <span class="${done ? 'text-amber-600 font-bold' : 'text-emerald-600 font-semibold'}">${attended}/${total}회</span>
+      </div>
+      <div class="h-2 bg-white rounded-full overflow-hidden mb-2">
+        <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${total ? Math.min(100, attended*100/total) : 0}%"></div>
+      </div>
+      <div class="flex items-center justify-between text-xs text-slate-500">
+        <span>시작: ${fmtFullDate(c.startDate)}</span>
+        <span>${fmtMoney(c.lessonFee)} ${c.paid ? '· 결제완료' : '· 미수금'}</span>
+      </div>
+      ${!c.paid ? `<button onclick="markPaid('${s.id}')" class="mt-2 w-full px-3 py-2 rounded-lg bg-rose-500 text-white text-sm font-medium">결제 완료 처리</button>` : ''}
+    </div>
+    <div class="flex gap-2 mb-3">
+      ${done ? `
+        <button onclick="reEnroll('${s.id}')" class="flex-1 px-3 py-2.5 rounded-lg bg-sky-500 text-white text-sm font-semibold">재등록</button>
+        <button onclick="markStopped('${s.id}')" class="px-3 py-2.5 rounded-lg border border-slate-300 text-slate-600 text-sm font-medium">관둠 처리</button>
+      ` : `
+        <button onclick="quickAttend('${s.id}', 'attended')" class="flex-1 px-3 py-2.5 rounded-lg bg-emerald-500 text-white text-sm font-medium">오늘 출석</button>
+        <button onclick="openAttendModal('${s.id}')" class="px-3 py-2.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium">날짜·결석 등</button>
+      `}
+    </div>
+    <div class="mb-3">
+      <h3 class="text-sm font-semibold mb-1">현재 사이클 수업 기록</h3>
+      <div class="text-sm">${lessonsHTML}</div>
+    </div>
+    ` : `
+    <div class="bg-slate-50 rounded-xl p-3 mb-3 text-sm text-slate-500">
+      현재 진행 중인 사이클이 없어요.
+      <button onclick="reEnroll('${s.id}')" class="mt-2 block w-full px-3 py-2 rounded-lg bg-sky-500 text-white text-sm font-medium">새 사이클 시작</button>
+    </div>
+    `}
+    <details class="mb-3">
+      <summary class="text-sm font-semibold cursor-pointer">📚 이전 사이클 (${(s.history||[]).length})</summary>
+      <div class="mt-2">${historyHTML}</div>
+    </details>
+    <div class="flex gap-2 pt-2 border-t border-slate-100">
+      <button onclick="openEditStudentModal('${s.id}')" class="flex-1 px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium">정보 편집</button>
+      <button onclick="deleteStudent('${s.id}')" class="px-3 py-2 rounded-lg border border-rose-300 text-rose-600 text-sm font-medium">삭제</button>
+    </div>
+  `;
+  openModal('modal-detail');
+}
+function quickAttend(id, status) {
+  const s = state.students.find(x => x.id === id);
+  if (!s || !s.currentCycle) return;
+  s.currentCycle.lessons.push({ date: todayISO(), status, note: '' });
+  save(); render();
+  if (document.getElementById('modal-detail') && !document.getElementById('modal-detail').classList.contains('hidden')) {
+    openDetailModal(id);
+  }
+  showToast('오늘 출석 기록됨');
+}
+function openAttendModal(id) {
+  attendCtx.studentId = id;
+  attendCtx.status = null;
+  document.getElementById('attend-date').value = todayISO();
+  document.getElementById('attend-note').value = '';
+  document.querySelectorAll('.attend-status-btn').forEach(b => {
+    b.classList.remove('bg-sky-500', 'text-white', 'border-sky-500');
+    b.classList.add('border-slate-300');
+  });
+  openModal('modal-attend');
+}
+function setAttendStatus(status) {
+  attendCtx.status = status;
+  document.querySelectorAll('.attend-status-btn').forEach(b => {
+    if (b.dataset.status === status) {
+      b.classList.add('bg-sky-500', 'text-white', 'border-sky-500');
+      b.classList.remove('border-slate-300');
+    } else {
+      b.classList.remove('bg-sky-500', 'text-white', 'border-sky-500');
+      b.classList.add('border-slate-300');
+    }
+  });
+}
+function saveAttendance() {
+  if (!attendCtx.studentId || !attendCtx.status) { alert('상태를 선택하세요'); return; }
+  const s = state.students.find(x => x.id === attendCtx.studentId);
+  if (!s || !s.currentCycle) return;
+  s.currentCycle.lessons.push({
+    date: document.getElementById('attend-date').value,
+    status: attendCtx.status,
+    note: document.getElementById('attend-note').value.trim(),
+  });
+  // 정렬: 날짜 오름차순
+  s.currentCycle.lessons.sort((a, b) => a.date.localeCompare(b.date));
+  save(); render(); closeModal('modal-attend');
+  if (detailStudentId === s.id) openDetailModal(s.id);
+  showToast('기록됨');
+}
+function deleteLesson(studentId, idx) {
+  const s = state.students.find(x => x.id === studentId);
+  if (!s || !s.currentCycle) return;
+  if (!confirm('이 수업 기록 삭제할까요?')) return;
+  s.currentCycle.lessons.splice(idx, 1);
+  save(); render(); openDetailModal(studentId);
+}
+function markPaid(id) {
+  const s = state.students.find(x => x.id === id);
+  if (!s || !s.currentCycle) return;
+  s.currentCycle.paid = true;
+  s.currentCycle.paidDate = todayISO();
+  save(); render();
+  if (detailStudentId === id) openDetailModal(id);
+  showToast('결제 완료 처리됨');
+}
+function reEnroll(id) {
+  const s = state.students.find(x => x.id === id);
+  if (!s) return;
+  // 현재 사이클이 있으면 history로 이동
+  if (s.currentCycle) {
+    s.currentCycle.endDate = todayISO();
+    s.currentCycle.reEnrollDecided = true;
+    s.history = s.history || [];
+    s.history.unshift(s.currentCycle);
+  }
+  // 폼 열기 (편집 모드와 비슷하게, 단 현재 사이클 정보를 새로 입력하도록)
+  document.getElementById('student-modal-title').textContent = '재등록 (새 사이클)';
+  document.getElementById('student-id').value = s.id;
+  document.getElementById('student-name').value = s.name;
+  populateSportSelect('student-sport');
+  document.getElementById('student-sport').value = s.sport;
+  populatePackageSelect('student-package');
+  // 이전 패키지 default
+  const lastCycle = (s.history && s.history[0]) || null;
+  document.getElementById('student-package').value = lastCycle ? lastCycle.packageId : (state.packages[0]?.id || '');
+  updatePriceFromPackage();
+  document.getElementById('student-start-date').value = todayISO();
+  document.getElementById('student-contact').value = s.contact || '';
+  document.getElementById('student-guardian').value = s.guardian || '';
+  document.getElementById('student-memo').value = s.memo || '';
+  document.getElementById('student-paid').checked = true;
+  // 새 currentCycle 만들도록 임시 비우기
+  s.currentCycle = null;
+  save(); // history 저장
+  closeModal('modal-detail');
+  openModal('modal-student');
+}
+function markStopped(id) {
+  const s = state.students.find(x => x.id === id);
+  if (!s) return;
+  if (!confirm(`${s.name} 학생을 관둠 처리할까요? (이력은 그대로 보관)`)) return;
+  if (s.currentCycle) {
+    s.currentCycle.endDate = todayISO();
+    s.currentCycle.stopped = true;
+    s.history = s.history || [];
+    s.history.unshift(s.currentCycle);
+    s.currentCycle = null;
+  }
+  s.stopped = true;
+  s.stoppedAt = todayISO();
+  save(); render();
+  if (detailStudentId === id) closeModal('modal-detail');
+  showToast('관둠 처리됨');
+}
+function deleteStudent(id) {
+  const s = state.students.find(x => x.id === id);
+  if (!s) return;
+  if (!confirm(`${s.name} 학생을 완전히 삭제할까요? 모든 기록이 사라집니다.`)) return;
+  state.students = state.students.filter(x => x.id !== id);
+  save(); render(); closeModal('modal-detail');
+  showToast('삭제됨');
+}
+// ============================================
+// SETTINGS
+// ============================================
+function openSettingsModal() {
+  renderSportsList();
+  renderPackagesList();
+  openModal('modal-settings');
+}
+function renderSportsList() {
+  const list = document.getElementById('sports-list');
+  list.innerHTML = state.sports.map(s => `
+    <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
+      <span>${sportEmoji(s)} ${escapeHTML(s)}</span>
+      <button onclick="removeSport('${escapeHTML(s)}')" class="text-rose-500 text-xs hover:underline">삭제</button>
+    </div>
+  `).join('');
+}
+function addSport() {
+  const v = document.getElementById('new-sport').value.trim();
+  if (!v) return;
+  if (state.sports.includes(v)) { alert('이미 있어요'); return; }
+  state.sports.push(v);
+  document.getElementById('new-sport').value = '';
+  save(); renderSportsList(); renderSportFilter();
+}
+function removeSport(s) {
+  if (!confirm(`"${s}" 종목 삭제? (기존 학생은 영향 없음)`)) return;
+  state.sports = state.sports.filter(x => x !== s);
+  save(); renderSportsList(); renderSportFilter();
+}
+function renderPackagesList() {
+  const list = document.getElementById('packages-list');
+  list.innerHTML = state.packages.map((p, i) => `
+    <div class="bg-slate-50 rounded-lg p-2">
+      <div class="text-xs font-medium mb-1">${escapeHTML(p.label)}</div>
+      <div class="grid grid-cols-3 gap-1">
+        <input type="number" value="${p.total}" onchange="updatePackage(${i}, 'total', this.value)" class="px-2 py-1 rounded border text-xs" placeholder="회수">
+        <input type="number" value="${p.lessonFee}" onchange="updatePackage(${i}, 'lessonFee', this.value)" class="px-2 py-1 rounded border text-xs" placeholder="수업료">
+        <input type="number" value="${p.entryFee}" onchange="updatePackage(${i}, 'entryFee', this.value)" class="px-2 py-1 rounded border text-xs" placeholder="입장료">
+      </div>
+    </div>
+  `).join('');
+}
+function updatePackage(idx, field, value) {
+  state.packages[idx][field] = parseInt(value) || 0;
+  save();
+}
+// ============================================
+// 백업 / 복원
+// ============================================
+function exportBackup() {
+  const data = JSON.stringify(state, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `레슨트래커_백업_${todayISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('백업 파일 다운로드됨');
+}
+function importBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!confirm('현재 데이터를 덮어씁니다. 계속할까요?')) {
+    event.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      state = {
+        students: data.students || [],
+        sports: data.sports || [...DEFAULT_SPORTS],
+        packages: data.packages || DEFAULT_PACKAGES.map(p => ({...p})),
+      };
+      save(); render(); closeModal('modal-settings');
+      showToast('복원 완료');
+    } catch (err) {
+      alert('파일을 읽을 수 없어요');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+function resetAll() {
+  if (!confirm('정말 모든 데이터를 지울까요? 복구 불가능합니다.')) return;
+  if (!confirm('한 번 더 확인! 진짜로 다 지울까요?')) return;
+  state = {
+    students: [],
+    sports: [...DEFAULT_SPORTS],
+    packages: DEFAULT_PACKAGES.map(p => ({...p})),
+  };
+  save(); render(); closeModal('modal-settings');
+  showToast('초기화 완료');
+}
+// ============================================
+// MODAL UTILS
+// ============================================
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+document.addEventListener('click', (e) => {
+  ['modal-student', 'modal-detail', 'modal-attend', 'modal-settings'].forEach(id => {
+    const m = document.getElementById(id);
+    if (m && e.target === m) closeModal(id);
+  });
+});
+// ============================================
+// 🔒 비밀번호 게이트
+// ============================================
+function checkUnlocked() {
+  try {
+    const raw = localStorage.getItem(UNLOCK_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    const expiryMs = UNLOCK_DAYS * 24 * 60 * 60 * 1000;
+    return (Date.now() - data.timestamp) < expiryMs;
+  } catch { return false; }
+}
+function showLockScreen() {
+  document.body.innerHTML = `
+    <div class="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+      <div class="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full">
+        <div class="text-center mb-5">
+          <div class="text-4xl mb-2">🔒</div>
+          <h1 class="text-xl font-bold mb-1">레슨 트래커</h1>
+          <p class="text-sm text-slate-500">비밀번호를 입력하세요</p>
+        </div>
+        <form onsubmit="event.preventDefault(); tryUnlock();">
+          <input id="pwd-input" type="password" autocomplete="current-password"
+            class="w-full px-4 py-3 rounded-lg border border-slate-300 mb-3 text-center"
+            placeholder="비밀번호" autofocus>
+          <button type="submit" class="w-full px-4 py-3 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-semibold">
+            잠금 해제
+          </button>
+          <p id="pwd-error" class="text-xs text-rose-600 mt-2 text-center hidden">비밀번호가 틀렸어요</p>
+        </form>
+      </div>
+    </div>
+  `;
+}
+function tryUnlock() {
+  const input = document.getElementById('pwd-input').value;
+  if (input === ACCESS_PASSWORD) {
+    localStorage.setItem(UNLOCK_KEY, JSON.stringify({ timestamp: Date.now() }));
+    location.reload();
+  } else {
+    document.getElementById('pwd-error').classList.remove('hidden');
+    document.getElementById('pwd-input').value = '';
+    document.getElementById('pwd-input').focus();
+  }
+}
+function lockNow() {
+  localStorage.removeItem(UNLOCK_KEY);
+  location.reload();
+}
+// ============================================
+// INIT
+// ============================================
+if (!checkUnlocked()) {
+  showLockScreen();
+} else {
+  load();
+  render();
+  // 종목이 1개면 종목 필터·선택 UI 숨기기
+  if (state.sports.length <= 1) {
+    document.getElementById('sport-filter').style.display = 'none';
+    // 학생 폼 종목 필드 숨김 처리는 모달 열릴 때 처리
+  }
+}
+</script>
+</body>
+</html>
