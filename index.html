@@ -144,6 +144,21 @@
         <label class="block text-xs font-medium text-slate-600 mb-1">수업 요일 (오는 날 선택, 여러 개 가능)</label>
         <div class="grid grid-cols-7 gap-1" id="day-picker"></div>
       </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">수업 시간</label>
+        <div class="grid grid-cols-4 gap-1.5" id="time-picker">
+          <button type="button" onclick="setLessonTime('15:00')" data-time="15:00" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">오후 3시</button>
+          <button type="button" onclick="setLessonTime('16:00')" data-time="16:00" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">오후 4시</button>
+          <button type="button" onclick="setLessonTime('17:00')" data-time="17:00" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">오후 5시</button>
+          <button type="button" onclick="setLessonTimeCustom()" data-time="custom" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">기타</button>
+        </div>
+        <div id="custom-time-display" class="text-xs text-slate-500 mt-1 hidden"></div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">이미 완료한 회차</label>
+        <input id="student-baseline" type="number" min="0" value="0" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+        <p class="text-[11px] text-slate-400 mt-1">트래커 시작 전에 이미 한 수업 횟수. 이후 출석은 캘린더에서 체크.</p>
+      </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">수업료 (내 계좌)</label>
@@ -280,7 +295,7 @@
 // 예: '파란얼음2026!', 'skate-cream-river-26', '111미터2026'
 // ⚠️ 주의: GitHub repo가 public이면 누구나 이 코드를 볼 수 있습니다.
 //          진짜 보안이 아니라 일반인 우연 차단용 + URL 비공개로 진짜 안전 확보.
-const ACCESS_PASSWORD = 'CHANGE_ME_여기를바꾸세요!';
+const ACCESS_PASSWORD = 'skate1116!';
 const UNLOCK_DAYS = 30; // 한 번 잠금해제 후 며칠 동안 유지할지
 // ============================================
 // CONSTANTS & DEFAULT DATA
@@ -308,6 +323,7 @@ let attendCtx = { studentId: null, status: null };
 let currentView = 'cards';
 let calMonth = new Date(); calMonth.setDate(1);
 let selectedDays = []; // 학생 폼 요일 picker용
+let selectedTime = ''; // 학생 폼 시간 picker용 (예: '15:00', '16:30')
 // ============================================
 // PERSISTENCE
 // ============================================
@@ -345,7 +361,9 @@ function showToast(msg) {
   setTimeout(() => t.classList.add('hidden'), 2000);
 }
 function attendedCount(cycle) {
-  return cycle.lessons.filter(l => l.status === 'attended' || l.status === 'makeup').length;
+  const baseline = cycle.baselineAttended || 0;
+  const tracked = cycle.lessons.filter(l => l.status === 'attended' || l.status === 'makeup').length;
+  return baseline + tracked;
 }
 function isCycleCompleted(student) {
   const c = student.currentCycle;
@@ -473,9 +491,9 @@ function renderStudentCard(s) {
       <div class="h-2 bg-slate-100 rounded-full overflow-hidden mb-1.5">
         <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${pct}%"></div>
       </div>
-      <div class="flex items-center justify-between text-xs text-slate-500">
-        <span>${c.label || ''}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}</span>
-        <span>${lastDate ? '최근 ' + fmtDate(lastDate) : '시작 ' + fmtDate(c.startDate)}</span>
+      <div class="flex items-center justify-between text-xs text-slate-500 gap-2">
+        <span class="truncate">${c.label || ''}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}${c.lessonTime ? ' · ' + formatTime(c.lessonTime) : ''}</span>
+        <span class="shrink-0">${lastDate ? '최근 ' + fmtDate(lastDate) : '시작 ' + fmtDate(c.startDate)}</span>
       </div>
     </div>
     <div class="mt-3 flex gap-1.5">
@@ -508,11 +526,14 @@ function openAddStudentModal() {
   document.getElementById('student-memo').value = '';
   document.getElementById('student-paid').checked = true;
   document.getElementById('student-start-date').value = todayISO();
+  document.getElementById('student-baseline').value = 0;
   populateSportSelect('student-sport');
   populatePackageSelect('student-package');
   updatePriceFromPackage();
   selectedDays = [];
   renderDayPicker();
+  selectedTime = '';
+  renderTimePicker();
   openModal('modal-student');
 }
 function openEditStudentModal(id) {
@@ -532,8 +553,11 @@ function openEditStudentModal(id) {
   document.getElementById('student-guardian').value = s.guardian || '';
   document.getElementById('student-memo').value = s.memo || '';
   document.getElementById('student-paid').checked = s.currentCycle ? !!s.currentCycle.paid : true;
+  document.getElementById('student-baseline').value = s.currentCycle && s.currentCycle.baselineAttended ? s.currentCycle.baselineAttended : 0;
   selectedDays = (s.currentCycle && s.currentCycle.lessonDays) ? [...s.currentCycle.lessonDays] : [];
   renderDayPicker();
+  selectedTime = (s.currentCycle && s.currentCycle.lessonTime) ? s.currentCycle.lessonTime : '';
+  renderTimePicker();
   closeModal('modal-detail');
   openModal('modal-student');
 }
@@ -574,6 +598,7 @@ function submitStudentForm() {
   const guardian = document.getElementById('student-guardian').value.trim();
   const memo = document.getElementById('student-memo').value.trim();
   const paid = document.getElementById('student-paid').checked;
+  const baselineAttended = Math.max(0, parseInt(document.getElementById('student-baseline').value) || 0);
   const pkg = state.packages.find(p => p.id === pkgId);
   if (!pkg) { alert('패키지를 선택하세요'); return; }
   if (id) {
@@ -592,8 +617,10 @@ function submitStudentForm() {
       s.currentCycle.lessonFee = lessonFee;
       s.currentCycle.entryFee = entryFee;
       s.currentCycle.paid = paid;
-      s.currentCycle.paidDate = paid ? (s.currentCycle.paidDate || startDate) : null;
+      s.currentCycle.paidDate = paid ? (s.currentCycle.paidDate || todayISO()) : null;
       s.currentCycle.lessonDays = [...selectedDays].sort((a,b)=>a-b);
+      s.currentCycle.lessonTime = selectedTime || '';
+      s.currentCycle.baselineAttended = baselineAttended;
     }
     showToast('수정됨');
   } else {
@@ -606,8 +633,10 @@ function submitStudentForm() {
         packageId: pkgId, label: pkg.label, total: pkg.total,
         startDate, lessonFee, entryFee,
         lessonDays: [...selectedDays].sort((a,b)=>a-b),
+        lessonTime: selectedTime || '',
+        baselineAttended,
         lessons: [],
-        paid, paidDate: paid ? startDate : null,
+        paid, paidDate: paid ? todayISO() : null,
         reEnrollDecided: false,
       },
       history: [],
@@ -676,11 +705,17 @@ function openDetailModal(id) {
       <div class="h-2 bg-white rounded-full overflow-hidden mb-2">
         <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${total ? Math.min(100, attended*100/total) : 0}%"></div>
       </div>
-      <div class="flex items-center justify-between text-xs text-slate-500">
-        <span>시작: ${fmtFullDate(c.startDate)}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}</span>
-        <span>${fmtMoney(c.lessonFee)} ${c.paid ? '· 결제완료' : '· 미수금'}</span>
+      <div class="flex items-center justify-between text-xs text-slate-500 gap-2">
+        <span class="truncate">시작: ${fmtFullDate(c.startDate)}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}${c.lessonTime ? ' · ' + formatTime(c.lessonTime) : ''}</span>
+        <span class="shrink-0">${fmtMoney(c.lessonFee)} ${c.paid ? '· 결제완료' : '· 미수금'}</span>
       </div>
-      ${!c.paid ? `<button onclick="markPaid('${s.id}')" class="mt-2 w-full px-3 py-2 rounded-lg bg-rose-500 text-white text-sm font-medium">결제 완료 처리</button>` : ''}
+      ${c.paid
+        ? `<div class="mt-2 text-xs text-slate-500 flex items-center justify-between gap-2">
+            <span>결제일: ${c.paidDate ? fmtFullDate(c.paidDate) : '미기록'}</span>
+            <button onclick="resetPaidDate('${s.id}')" class="text-sky-600 hover:underline shrink-0">오늘로 재설정</button>
+          </div>`
+        : `<button onclick="markPaid('${s.id}')" class="mt-2 w-full px-3 py-2 rounded-lg bg-rose-500 text-white text-sm font-medium">결제 완료 처리</button>`
+      }
     </div>
     <div class="flex gap-2 mb-3">
       ${done ? `
@@ -693,6 +728,7 @@ function openDetailModal(id) {
     </div>
     <div class="mb-3">
       <h3 class="text-sm font-semibold mb-1">현재 사이클 수업 기록</h3>
+      ${(c.baselineAttended || 0) > 0 ? `<div class="text-xs text-slate-500 bg-amber-50 rounded-lg px-2 py-1.5 mb-2">📌 트래커 시작 전 ${c.baselineAttended}회 사전 등록됨 (편집에서 수정 가능)</div>` : ''}
       <div class="text-sm">${lessonsHTML}</div>
     </div>
     ` : `
@@ -776,6 +812,14 @@ function markPaid(id) {
   if (detailStudentId === id) openDetailModal(id);
   showToast('결제 완료 처리됨');
 }
+function resetPaidDate(id) {
+  const s = state.students.find(x => x.id === id);
+  if (!s || !s.currentCycle) return;
+  s.currentCycle.paidDate = todayISO();
+  save(); render();
+  if (detailStudentId === id) openDetailModal(id);
+  showToast('결제일이 오늘로 재설정됨');
+}
 function reEnroll(id) {
   const s = state.students.find(x => x.id === id);
   if (!s) return;
@@ -802,8 +846,11 @@ function reEnroll(id) {
   document.getElementById('student-guardian').value = s.guardian || '';
   document.getElementById('student-memo').value = s.memo || '';
   document.getElementById('student-paid').checked = true;
+  document.getElementById('student-baseline').value = 0;
   selectedDays = lastCycle && lastCycle.lessonDays ? [...lastCycle.lessonDays] : [];
   renderDayPicker();
+  selectedTime = lastCycle && lastCycle.lessonTime ? lastCycle.lessonTime : '';
+  renderTimePicker();
   // 새 currentCycle 만들도록 임시 비우기
   s.currentCycle = null;
   save(); // history 저장
@@ -1017,6 +1064,73 @@ function daysToString(days) {
   return days.slice().sort((a,b)=>a-b).map(d => DAY_LABELS[d]).join('·');
 }
 // ============================================
+// 시간 선택 (Time Picker)
+// ============================================
+const PRESET_TIMES = ['15:00','16:00','17:00'];
+function formatTime(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return t;
+  const minStr = m > 0 ? ` ${m}분` : '';
+  if (h === 0) return `오전 12시${minStr}`;
+  if (h < 12) return `오전 ${h}시${minStr}`;
+  if (h === 12) return `오후 12시${minStr}`;
+  return `오후 ${h - 12}시${minStr}`;
+}
+function shortTime(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  if (isNaN(h)) return '';
+  const h12 = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+  return m === 0 ? `${h12}시` : `${h12}:${String(m).padStart(2,'0')}`;
+}
+function renderTimePicker() {
+  const buttons = document.querySelectorAll('#time-picker .time-btn');
+  if (!buttons.length) return;
+  buttons.forEach(b => {
+    const t = b.dataset.time;
+    let isActive = false;
+    if (t === 'custom') {
+      isActive = selectedTime && !PRESET_TIMES.includes(selectedTime);
+    } else {
+      isActive = selectedTime === t;
+    }
+    if (isActive) {
+      b.className = 'time-btn px-2 py-2 rounded-lg border text-sm font-medium bg-sky-500 text-white border-sky-500';
+    } else {
+      b.className = 'time-btn px-2 py-2 rounded-lg border text-sm font-medium bg-white border-slate-300 text-slate-700 hover:bg-slate-50';
+    }
+  });
+  const display = document.getElementById('custom-time-display');
+  if (display) {
+    if (selectedTime && !PRESET_TIMES.includes(selectedTime)) {
+      display.textContent = `선택됨: ${formatTime(selectedTime)}`;
+      display.classList.remove('hidden');
+    } else {
+      display.classList.add('hidden');
+    }
+  }
+}
+function setLessonTime(t) {
+  selectedTime = selectedTime === t ? '' : t; // 같은 거 한번 더 누르면 해제
+  renderTimePicker();
+}
+function setLessonTimeCustom() {
+  const cur = selectedTime && !PRESET_TIMES.includes(selectedTime) ? selectedTime : '';
+  const input = prompt('수업 시간 입력 (예: 14:30, 18:00 형식)', cur);
+  if (input === null) return;
+  if (input.trim() === '') { selectedTime = ''; renderTimePicker(); return; }
+  if (!/^\d{1,2}:\d{2}$/.test(input.trim())) {
+    alert('형식이 잘못됐어요. 예: 14:30');
+    return;
+  }
+  // normalize to HH:MM
+  const [h, m] = input.trim().split(':').map(Number);
+  if (h > 23 || m > 59) { alert('시간 범위가 잘못됐어요'); return; }
+  selectedTime = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  renderTimePicker();
+}
+// ============================================
 // 뷰 전환 (Cards / Calendar)
 // ============================================
 function setView(v) {
@@ -1072,6 +1186,10 @@ function renderCalendar() {
       if (!(s.currentCycle.lessonDays || []).includes(dow)) return false;
       if (s.currentCycle.startDate && dateStr < s.currentCycle.startDate) return false;
       return true;
+    }).sort((a,b) => {
+      const ta = a.currentCycle.lessonTime || 'zz';
+      const tb = b.currentCycle.lessonTime || 'zz';
+      return ta.localeCompare(tb);
     });
     // 실제 출석 기록 (현재 사이클 + 이전 사이클 모두)
     const recordedItems = [];
@@ -1089,20 +1207,24 @@ function renderCalendar() {
     const items = [];
     for (const x of recordedItems) {
       const sym = x.lesson.status === 'attended' ? '✓' : x.lesson.status === 'makeup' ? '＋' : '✗';
-      items.push({name: x.student.name, color: getStudentColor(x.student), symbol: sym, recorded: true});
+      const t = x.student.currentCycle && x.student.currentCycle.lessonTime ? x.student.currentCycle.lessonTime : '';
+      items.push({name: x.student.name, color: getStudentColor(x.student), symbol: sym, recorded: true, time: t});
     }
     for (const s of scheduled) {
       if (!recordedIds.has(s.id)) {
-        items.push({name: s.name, color: getStudentColor(s), symbol: '', recorded: false});
+        const t = s.currentCycle.lessonTime || '';
+        items.push({name: s.name, color: getStudentColor(s), symbol: '', recorded: false, time: t});
       }
     }
+    // 시간순 정렬
+    items.sort((a,b) => (a.time||'zz').localeCompare(b.time||'zz'));
     const dayLabel = isToday
       ? `<span class="bg-sky-500 text-white font-bold rounded-full w-5 h-5 inline-flex items-center justify-center text-[10px]">${d}</span>`
       : `<span class="${dow === 0 ? 'text-rose-500' : dow === 6 ? 'text-blue-500' : 'text-slate-700'}">${d}</span>`;
     return `<div onclick="openDayModal('${dateStr}')" class="bg-white rounded-lg p-1 border ${isToday ? 'border-sky-300' : 'border-slate-200'} cursor-pointer hover:bg-slate-50 min-h-[60px] sm:min-h-[80px] overflow-hidden">
       <div class="text-[11px] font-medium mb-0.5">${dayLabel}</div>
       <div class="text-[9px] sm:text-[10px] space-y-0.5 leading-tight">
-        ${items.slice(0, 3).map(it => `<div class="truncate ${it.recorded ? 'font-medium' : 'opacity-60'}" style="color: ${it.color}">${it.symbol ? it.symbol+' ' : '· '}${escapeHTML(it.name)}</div>`).join('')}
+        ${items.slice(0, 3).map(it => `<div class="truncate ${it.recorded ? 'font-medium' : 'opacity-60'}" style="color: ${it.color}">${it.symbol ? it.symbol+' ' : '· '}${it.time ? '<span class="opacity-70">'+shortTime(it.time)+'</span> ' : ''}${escapeHTML(it.name)}</div>`).join('')}
         ${items.length > 3 ? `<div class="text-[9px] text-slate-400">+${items.length - 3}</div>` : ''}
       </div>
     </div>`;
@@ -1160,13 +1282,15 @@ function openDayModal(dateStr) {
         const colors = {attended:'bg-emerald-100 text-emerald-700', makeup:'bg-blue-100 text-blue-700', missed:'bg-rose-100 text-rose-700'};
         statusBadge = `<span class="badge ${colors[rec.status]}">${labels[rec.status]}</span>`;
       }
+      const timeLabel = c && c.lessonTime ? formatTime(c.lessonTime) : '';
       html += `
         <div class="bg-slate-50 rounded-xl p-3">
           <div class="flex items-center justify-between mb-2 flex-wrap gap-1">
             <div class="flex items-center gap-2 min-w-0">
               <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${color}"></span>
               <span class="font-semibold truncate">${escapeHTML(s.name)}</span>
-              <span class="text-xs text-slate-500">${attended}/${total}</span>
+              ${timeLabel ? `<span class="text-xs text-slate-500">${timeLabel}</span>` : ''}
+              <span class="text-xs text-slate-400">${attended}/${total}</span>
             </div>
             ${statusBadge}
           </div>
