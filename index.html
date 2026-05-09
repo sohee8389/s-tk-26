@@ -11,6 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="레슨트래커">
   <title>레슨 트래커</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif; }
     .modal-bg { background: rgba(0,0,0,0.5); }
@@ -298,6 +299,14 @@
 const ACCESS_PASSWORD = 'skate1116!';
 const UNLOCK_DAYS = 30; // 한 번 잠금해제 후 며칠 동안 유지할지
 // ============================================
+// 🌐 Supabase 설정 (여기를 너 값으로 바꾸세요!)
+// ============================================
+// 1) Project URL: Supabase 대시보드 메인 페이지에서 복사
+// 2) anon key: Settings → API → Legacy 탭의 'anon public' 키
+const SUPABASE_URL = 'https://gpzgwcjtfsyvgicreiut.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdwemd3Y2p0ZnN5dmdpY3JlaXV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTU0MTUsImV4cCI6MjA5MzgzMTQxNX0.CkMxwCCmeNTVDp7kUhlKqk2gIsKegXUPN2oJBB0Z0ec';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ============================================
 // CONSTANTS & DEFAULT DATA
 // ============================================
 const STORAGE_KEY = 'lessonTrackerV1';
@@ -327,32 +336,85 @@ let selectedTimes = []; // 학생 폼 시간 picker용 (다중 선택, 예: ['15
 // ============================================
 // PERSISTENCE
 // ============================================
-function load() {
+function migrateData(data) {
+  if (!data || !data.students) return;
+  data.students.forEach(s => {
+    const cycles = [...(s.history || [])];
+    if (s.currentCycle) cycles.push(s.currentCycle);
+    cycles.forEach(c => {
+      if (c.lessonTime && !c.lessonTimes) {
+        c.lessonTimes = [c.lessonTime];
+        delete c.lessonTime;
+      }
+    });
+  });
+}
+function loadFromLocal() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      state.students = data.students || [];
-      state.sports = data.sports?.length ? data.sports : [...DEFAULT_SPORTS];
-      state.packages = data.packages?.length ? data.packages : DEFAULT_PACKAGES.map(p => ({...p}));
-      // 마이그레이션: 옛날 lessonTime(string) → lessonTimes(array)
-      state.students.forEach(s => {
-        const cycles = [...(s.history || [])];
-        if (s.currentCycle) cycles.push(s.currentCycle);
-        cycles.forEach(c => {
-          if (c.lessonTime && !c.lessonTimes) {
-            c.lessonTimes = [c.lessonTime];
-            delete c.lessonTime;
-          }
-        });
-      });
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    state.students = data.students || [];
+    state.sports = data.sports?.length ? data.sports : [...DEFAULT_SPORTS];
+    state.packages = data.packages?.length ? data.packages : DEFAULT_PACKAGES.map(p => ({...p}));
+    migrateData(state);
+  } catch (e) {
+    console.error('local load failed', e);
+  }
+}
+async function load() {
+  // 1. 로컬에서 먼저 (즉시 UI 표시)
+  loadFromLocal();
+  render();
+  // 2. 클라우드 동기화 (비동기)
+  await syncFromCloud();
+}
+async function syncFromCloud() {
+  try {
+    const { data, error } = await supabase
+      .from('app_data').select('data').eq('id', 1).single();
+    if (error) throw error;
+    const cloud = data?.data || {};
+    const cloudHasData = cloud.students && cloud.students.length > 0;
+    const localHasData = state.students && state.students.length > 0;
+    if (cloudHasData) {
+      // 클라우드 우선 (다른 기기에서 수정된 것 받아오기)
+      migrateData(cloud);
+      state.students = cloud.students || [];
+      state.sports = cloud.sports?.length ? cloud.sports : [...DEFAULT_SPORTS];
+      state.packages = cloud.packages?.length ? cloud.packages : DEFAULT_PACKAGES.map(p => ({...p}));
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+      render();
+      console.log('☁️ 클라우드에서 동기화됨');
+    } else if (localHasData) {
+      // 클라우드 비어있고 로컬에 데이터 있음 → 클라우드로 업로드
+      console.log('☁️ 로컬 → 클라우드 초기 업로드');
+      await pushToCloud();
     }
   } catch (e) {
-    console.error('load failed', e);
+    console.error('cloud sync failed', e);
+    showToast('⚠️ 오프라인 — 로컬 저장만');
+  }
+}
+let saveTimer = null;
+async function pushToCloud() {
+  try {
+    const { error } = await supabase
+      .from('app_data')
+      .upsert({ id: 1, data: state, updated_at: new Date().toISOString() });
+    if (error) throw error;
+  } catch (e) {
+    console.error('cloud save failed', e);
   }
 }
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // 로컬 즉시 저장 (오프라인 대비)
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {}
+  // 클라우드는 디바운스 (0.8초 후 한 번만)
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(pushToCloud, 800);
 }
 // ============================================
 // HELPERS
