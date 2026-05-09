@@ -62,25 +62,51 @@
       <div class="text-xl font-bold text-rose-600" id="stat-unpaid">0원</div>
     </div>
   </section>
-  <!-- 종목 필터 + 검색 -->
-  <section class="mb-4 flex gap-2 flex-wrap items-center">
-    <input id="search" type="text" placeholder="이름 검색…" class="flex-1 min-w-[150px] px-3 py-2 rounded-lg border border-slate-300 text-sm" oninput="render()">
-    <select id="sport-filter" onchange="render()" class="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
-      <option value="">모든 종목</option>
-    </select>
-    <select id="status-filter" onchange="render()" class="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
-      <option value="active">진행중</option>
-      <option value="completed">사이클 완료</option>
-      <option value="all">전체</option>
-    </select>
+  <!-- 뷰 전환 토글 -->
+  <section class="mb-4 flex gap-1 bg-slate-100 rounded-lg p-1">
+    <button onclick="setView('cards')" id="view-btn-cards" class="flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition bg-white shadow-sm">학생 카드</button>
+    <button onclick="setView('calendar')" id="view-btn-calendar" class="flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition text-slate-500">캘린더</button>
   </section>
-  <!-- 학생 카드 그리드 -->
-  <section id="students-grid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></section>
-  <!-- 빈 상태 -->
-  <div id="empty-state" class="hidden text-center py-12 empty-state">
-    <div class="text-4xl mb-2">🎿</div>
-    <p class="font-medium">아직 등록된 학생이 없어요</p>
-    <p class="text-sm">아래 버튼으로 첫 학생을 추가해보세요</p>
+  <!-- 카드 뷰 -->
+  <div id="view-cards">
+    <!-- 종목 필터 + 검색 -->
+    <section class="mb-4 flex gap-2 flex-wrap items-center">
+      <input id="search" type="text" placeholder="이름 검색…" class="flex-1 min-w-[150px] px-3 py-2 rounded-lg border border-slate-300 text-sm" oninput="render()">
+      <select id="sport-filter" onchange="render()" class="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+        <option value="">모든 종목</option>
+      </select>
+      <select id="status-filter" onchange="render()" class="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+        <option value="active">진행중</option>
+        <option value="completed">사이클 완료</option>
+        <option value="all">전체</option>
+      </select>
+    </section>
+    <!-- 학생 카드 그리드 -->
+    <section id="students-grid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></section>
+    <!-- 빈 상태 -->
+    <div id="empty-state" class="hidden text-center py-12 empty-state">
+      <div class="text-4xl mb-2">🎿</div>
+      <p class="font-medium">아직 등록된 학생이 없어요</p>
+      <p class="text-sm">아래 버튼으로 첫 학생을 추가해보세요</p>
+    </div>
+  </div>
+  <!-- 캘린더 뷰 -->
+  <div id="view-calendar" class="hidden">
+    <div class="flex items-center justify-between mb-3">
+      <button onclick="prevMonth()" class="px-3 py-1.5 rounded-lg hover:bg-slate-100 text-lg">←</button>
+      <h2 id="cal-month-label" class="font-semibold text-base"></h2>
+      <button onclick="nextMonth()" class="px-3 py-1.5 rounded-lg hover:bg-slate-100 text-lg">→</button>
+    </div>
+    <div class="grid grid-cols-7 gap-1 text-xs text-center text-slate-500 mb-1 font-medium">
+      <div class="text-rose-500">일</div>
+      <div>월</div><div>화</div><div>수</div><div>목</div><div>금</div>
+      <div class="text-blue-500">토</div>
+    </div>
+    <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+    <div class="mt-3 text-xs text-slate-500 leading-relaxed">
+      📅 학생 이름 = 그 요일에 예정된 학생 · 점선/연한 색 = 예정 / 진한 색 = 출석 기록됨<br>
+      날짜 클릭 → 출석·결석·보강 빠른 체크
+    </div>
   </div>
 </main>
 <!-- ========== FAB ========== -->
@@ -113,6 +139,10 @@
           <label class="block text-xs font-medium text-slate-600 mb-1">시작일 (첫 수업일) *</label>
           <input id="student-start-date" type="date" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
         </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">수업 요일 (오는 날 선택, 여러 개 가능)</label>
+        <div class="grid grid-cols-7 gap-1" id="day-picker"></div>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -233,6 +263,12 @@
     </div>
   </div>
 </div>
+<!-- ========== MODAL: 날짜 클릭 (캘린더) ========== -->
+<div id="modal-day" class="hidden fixed inset-0 z-40 modal-bg flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="modal-content bg-white sm:rounded-2xl rounded-t-2xl w-full sm:max-w-md p-5" id="day-modal-content">
+    <!-- rendered by JS -->
+  </div>
+</div>
 <!-- ========== TOAST ========== -->
 <div id="toast" class="hidden fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg"></div>
 <script>
@@ -244,7 +280,7 @@
 // 예: '파란얼음2026!', 'skate-cream-river-26', '111미터2026'
 // ⚠️ 주의: GitHub repo가 public이면 누구나 이 코드를 볼 수 있습니다.
 //          진짜 보안이 아니라 일반인 우연 차단용 + URL 비공개로 진짜 안전 확보.
-const ACCESS_PASSWORD = 'skate1116!';
+const ACCESS_PASSWORD = 'CHANGE_ME_여기를바꾸세요!';
 const UNLOCK_DAYS = 30; // 한 번 잠금해제 후 며칠 동안 유지할지
 // ============================================
 // CONSTANTS & DEFAULT DATA
@@ -269,6 +305,9 @@ let state = {
   packages: DEFAULT_PACKAGES.map(p => ({...p})),
 };
 let attendCtx = { studentId: null, status: null };
+let currentView = 'cards';
+let calMonth = new Date(); calMonth.setDate(1);
+let selectedDays = []; // 학생 폼 요일 picker용
 // ============================================
 // PERSISTENCE
 // ============================================
@@ -435,7 +474,7 @@ function renderStudentCard(s) {
         <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${pct}%"></div>
       </div>
       <div class="flex items-center justify-between text-xs text-slate-500">
-        <span>${c.label || ''}</span>
+        <span>${c.label || ''}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}</span>
         <span>${lastDate ? '최근 ' + fmtDate(lastDate) : '시작 ' + fmtDate(c.startDate)}</span>
       </div>
     </div>
@@ -472,6 +511,8 @@ function openAddStudentModal() {
   populateSportSelect('student-sport');
   populatePackageSelect('student-package');
   updatePriceFromPackage();
+  selectedDays = [];
+  renderDayPicker();
   openModal('modal-student');
 }
 function openEditStudentModal(id) {
@@ -491,6 +532,8 @@ function openEditStudentModal(id) {
   document.getElementById('student-guardian').value = s.guardian || '';
   document.getElementById('student-memo').value = s.memo || '';
   document.getElementById('student-paid').checked = s.currentCycle ? !!s.currentCycle.paid : true;
+  selectedDays = (s.currentCycle && s.currentCycle.lessonDays) ? [...s.currentCycle.lessonDays] : [];
+  renderDayPicker();
   closeModal('modal-detail');
   openModal('modal-student');
 }
@@ -550,6 +593,7 @@ function submitStudentForm() {
       s.currentCycle.entryFee = entryFee;
       s.currentCycle.paid = paid;
       s.currentCycle.paidDate = paid ? (s.currentCycle.paidDate || startDate) : null;
+      s.currentCycle.lessonDays = [...selectedDays].sort((a,b)=>a-b);
     }
     showToast('수정됨');
   } else {
@@ -561,6 +605,7 @@ function submitStudentForm() {
         id: uid(),
         packageId: pkgId, label: pkg.label, total: pkg.total,
         startDate, lessonFee, entryFee,
+        lessonDays: [...selectedDays].sort((a,b)=>a-b),
         lessons: [],
         paid, paidDate: paid ? startDate : null,
         reEnrollDecided: false,
@@ -632,7 +677,7 @@ function openDetailModal(id) {
         <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${total ? Math.min(100, attended*100/total) : 0}%"></div>
       </div>
       <div class="flex items-center justify-between text-xs text-slate-500">
-        <span>시작: ${fmtFullDate(c.startDate)}</span>
+        <span>시작: ${fmtFullDate(c.startDate)}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}</span>
         <span>${fmtMoney(c.lessonFee)} ${c.paid ? '· 결제완료' : '· 미수금'}</span>
       </div>
       ${!c.paid ? `<button onclick="markPaid('${s.id}')" class="mt-2 w-full px-3 py-2 rounded-lg bg-rose-500 text-white text-sm font-medium">결제 완료 처리</button>` : ''}
@@ -757,6 +802,8 @@ function reEnroll(id) {
   document.getElementById('student-guardian').value = s.guardian || '';
   document.getElementById('student-memo').value = s.memo || '';
   document.getElementById('student-paid').checked = true;
+  selectedDays = lastCycle && lastCycle.lessonDays ? [...lastCycle.lessonDays] : [];
+  renderDayPicker();
   // 새 currentCycle 만들도록 임시 비우기
   s.currentCycle = null;
   save(); // history 저장
@@ -893,7 +940,7 @@ function resetAll() {
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 document.addEventListener('click', (e) => {
-  ['modal-student', 'modal-detail', 'modal-attend', 'modal-settings'].forEach(id => {
+  ['modal-student', 'modal-detail', 'modal-attend', 'modal-settings', 'modal-day'].forEach(id => {
     const m = document.getElementById(id);
     if (m && e.target === m) closeModal(id);
   });
@@ -946,6 +993,222 @@ function tryUnlock() {
 function lockNow() {
   localStorage.removeItem(UNLOCK_KEY);
   location.reload();
+}
+// ============================================
+// 요일 선택 (Day Picker)
+// ============================================
+const DAY_LABELS = ['일','월','화','수','목','금','토'];
+function renderDayPicker() {
+  const picker = document.getElementById('day-picker');
+  if (!picker) return;
+  picker.innerHTML = DAY_LABELS.map((d, i) => {
+    const active = selectedDays.includes(i);
+    const weekendColor = i === 0 ? 'text-rose-500' : i === 6 ? 'text-blue-500' : 'text-slate-700';
+    return `<button type="button" onclick="toggleDay(${i})" class="px-1 py-2 rounded-lg border text-sm font-medium transition ${active ? 'bg-sky-500 text-white border-sky-500' : `bg-white border-slate-300 ${weekendColor} hover:bg-slate-50`}">${d}</button>`;
+  }).join('');
+}
+function toggleDay(d) {
+  if (selectedDays.includes(d)) selectedDays = selectedDays.filter(x => x !== d);
+  else selectedDays.push(d);
+  renderDayPicker();
+}
+function daysToString(days) {
+  if (!days || !days.length) return '';
+  return days.slice().sort((a,b)=>a-b).map(d => DAY_LABELS[d]).join('·');
+}
+// ============================================
+// 뷰 전환 (Cards / Calendar)
+// ============================================
+function setView(v) {
+  currentView = v;
+  document.getElementById('view-cards').classList.toggle('hidden', v !== 'cards');
+  document.getElementById('view-calendar').classList.toggle('hidden', v !== 'calendar');
+  const cardsBtn = document.getElementById('view-btn-cards');
+  const calBtn = document.getElementById('view-btn-calendar');
+  if (v === 'cards') {
+    cardsBtn.classList.add('bg-white','shadow-sm');
+    cardsBtn.classList.remove('text-slate-500');
+    calBtn.classList.remove('bg-white','shadow-sm');
+    calBtn.classList.add('text-slate-500');
+  } else {
+    calBtn.classList.add('bg-white','shadow-sm');
+    calBtn.classList.remove('text-slate-500');
+    cardsBtn.classList.remove('bg-white','shadow-sm');
+    cardsBtn.classList.add('text-slate-500');
+    renderCalendar();
+  }
+}
+// ============================================
+// 캘린더 렌더링
+// ============================================
+const STUDENT_COLORS = ['#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+function getStudentColor(s) {
+  let hash = 0;
+  for (let i = 0; i < s.name.length; i++) hash = (hash * 31 + s.name.charCodeAt(i)) >>> 0;
+  return STUDENT_COLORS[hash % STUDENT_COLORS.length];
+}
+function renderCalendar() {
+  const y = calMonth.getFullYear();
+  const m = calMonth.getMonth();
+  const firstDay = new Date(y, m, 1);
+  const lastDay = new Date(y, m + 1, 0);
+  const startDow = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  document.getElementById('cal-month-label').textContent = `${y}년 ${m + 1}월`;
+  let cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const todayStr = todayISO();
+  const grid = document.getElementById('calendar-grid');
+  grid.innerHTML = cells.map(d => {
+    if (d === null) return '<div class="min-h-[60px] sm:min-h-[80px]"></div>';
+    const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const date = new Date(y, m, d);
+    const dow = date.getDay();
+    const isToday = dateStr === todayStr;
+    // 예정된 학생 (현재 사이클 + 해당 요일 + 시작일 이후)
+    const scheduled = state.students.filter(s => {
+      if (!s.currentCycle) return false;
+      if (!(s.currentCycle.lessonDays || []).includes(dow)) return false;
+      if (s.currentCycle.startDate && dateStr < s.currentCycle.startDate) return false;
+      return true;
+    });
+    // 실제 출석 기록 (현재 사이클 + 이전 사이클 모두)
+    const recordedItems = [];
+    const recordedIds = new Set();
+    for (const s of state.students) {
+      const cycles = [...(s.history || []), ...(s.currentCycle ? [s.currentCycle] : [])];
+      for (const c of cycles) {
+        const l = (c.lessons || []).find(l => l.date === dateStr);
+        if (l) {
+          recordedItems.push({student: s, lesson: l});
+          recordedIds.add(s.id);
+        }
+      }
+    }
+    const items = [];
+    for (const x of recordedItems) {
+      const sym = x.lesson.status === 'attended' ? '✓' : x.lesson.status === 'makeup' ? '＋' : '✗';
+      items.push({name: x.student.name, color: getStudentColor(x.student), symbol: sym, recorded: true});
+    }
+    for (const s of scheduled) {
+      if (!recordedIds.has(s.id)) {
+        items.push({name: s.name, color: getStudentColor(s), symbol: '', recorded: false});
+      }
+    }
+    const dayLabel = isToday
+      ? `<span class="bg-sky-500 text-white font-bold rounded-full w-5 h-5 inline-flex items-center justify-center text-[10px]">${d}</span>`
+      : `<span class="${dow === 0 ? 'text-rose-500' : dow === 6 ? 'text-blue-500' : 'text-slate-700'}">${d}</span>`;
+    return `<div onclick="openDayModal('${dateStr}')" class="bg-white rounded-lg p-1 border ${isToday ? 'border-sky-300' : 'border-slate-200'} cursor-pointer hover:bg-slate-50 min-h-[60px] sm:min-h-[80px] overflow-hidden">
+      <div class="text-[11px] font-medium mb-0.5">${dayLabel}</div>
+      <div class="text-[9px] sm:text-[10px] space-y-0.5 leading-tight">
+        ${items.slice(0, 3).map(it => `<div class="truncate ${it.recorded ? 'font-medium' : 'opacity-60'}" style="color: ${it.color}">${it.symbol ? it.symbol+' ' : '· '}${escapeHTML(it.name)}</div>`).join('')}
+        ${items.length > 3 ? `<div class="text-[9px] text-slate-400">+${items.length - 3}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function prevMonth() {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1);
+  renderCalendar();
+}
+function nextMonth() {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
+  renderCalendar();
+}
+function openDayModal(dateStr) {
+  const date = new Date(dateStr);
+  const dow = date.getDay();
+  const dowLabel = DAY_LABELS[dow];
+  const scheduled = state.students.filter(s => {
+    if (!s.currentCycle) return false;
+    if (!(s.currentCycle.lessonDays || []).includes(dow)) return false;
+    if (s.currentCycle.startDate && dateStr < s.currentCycle.startDate) return false;
+    return true;
+  });
+  // 예정 외에 실제 기록만 있는 학생도 포함 (보강 등)
+  const recordsByStudent = {};
+  for (const s of state.students) {
+    if (!s.currentCycle) continue;
+    const l = (s.currentCycle.lessons || []).find(l => l.date === dateStr);
+    if (l) recordsByStudent[s.id] = l;
+  }
+  const allStudentIds = new Set([...scheduled.map(s => s.id), ...Object.keys(recordsByStudent)]);
+  const allStudents = state.students.filter(s => allStudentIds.has(s.id));
+  let html = `
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h2 class="text-lg font-bold">${fmtFullDate(dateStr)} (${dowLabel})</h2>
+        <p class="text-xs text-slate-500">${allStudents.length}명</p>
+      </div>
+      <button onclick="closeModal('modal-day')" class="text-slate-400 text-2xl leading-none">×</button>
+    </div>
+  `;
+  if (allStudents.length === 0) {
+    html += '<p class="text-sm text-slate-400 py-6 text-center">이 날 예정된 학생이 없어요</p>';
+  } else {
+    html += '<div class="space-y-2">';
+    for (const s of allStudents) {
+      const rec = recordsByStudent[s.id];
+      const c = s.currentCycle;
+      const attended = c ? attendedCount(c) : 0;
+      const total = c ? c.total : 0;
+      const color = getStudentColor(s);
+      let statusBadge = '';
+      if (rec) {
+        const labels = {attended:'출석',makeup:'보강',missed:'결석'};
+        const colors = {attended:'bg-emerald-100 text-emerald-700', makeup:'bg-blue-100 text-blue-700', missed:'bg-rose-100 text-rose-700'};
+        statusBadge = `<span class="badge ${colors[rec.status]}">${labels[rec.status]}</span>`;
+      }
+      html += `
+        <div class="bg-slate-50 rounded-xl p-3">
+          <div class="flex items-center justify-between mb-2 flex-wrap gap-1">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${color}"></span>
+              <span class="font-semibold truncate">${escapeHTML(s.name)}</span>
+              <span class="text-xs text-slate-500">${attended}/${total}</span>
+            </div>
+            ${statusBadge}
+          </div>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button onclick="recordOnDay('${s.id}','${dateStr}','attended')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='attended'?'bg-emerald-500 text-white':'bg-white border border-slate-300 hover:bg-emerald-50'}">출석</button>
+            <button onclick="recordOnDay('${s.id}','${dateStr}','makeup')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='makeup'?'bg-blue-500 text-white':'bg-white border border-slate-300 hover:bg-blue-50'}">보강</button>
+            <button onclick="recordOnDay('${s.id}','${dateStr}','missed')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='missed'?'bg-rose-500 text-white':'bg-white border border-slate-300 hover:bg-rose-50'}">결석</button>
+          </div>
+          ${rec ? `<button onclick="clearDayRecord('${s.id}','${dateStr}')" class="mt-1.5 text-xs text-slate-400 hover:text-rose-500">기록 삭제</button>` : ''}
+        </div>
+      `;
+    }
+    html += '</div>';
+  }
+  document.getElementById('day-modal-content').innerHTML = html;
+  openModal('modal-day');
+}
+function recordOnDay(studentId, dateStr, status) {
+  const s = state.students.find(x => x.id === studentId);
+  if (!s || !s.currentCycle) return;
+  const existing = (s.currentCycle.lessons || []).find(l => l.date === dateStr);
+  if (existing) {
+    existing.status = status;
+  } else {
+    s.currentCycle.lessons.push({date: dateStr, status, note: ''});
+    s.currentCycle.lessons.sort((a,b) => a.date.localeCompare(b.date));
+  }
+  save();
+  renderCalendar();
+  openDayModal(dateStr);
+  showToast('기록됨');
+  renderHeaderStats(); renderStats(); renderAlerts();
+}
+function clearDayRecord(studentId, dateStr) {
+  const s = state.students.find(x => x.id === studentId);
+  if (!s || !s.currentCycle) return;
+  s.currentCycle.lessons = s.currentCycle.lessons.filter(l => l.date !== dateStr);
+  save();
+  renderCalendar();
+  openDayModal(dateStr);
+  showToast('기록 삭제됨');
+  renderHeaderStats(); renderStats(); renderAlerts();
 }
 // ============================================
 // INIT
