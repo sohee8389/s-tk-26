@@ -8,8 +8,11 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
   <meta name="referrer" content="no-referrer">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="레슨트래커">
-  <title>레슨 트래커</title>
+  <meta name="apple-mobile-web-app-title" content="레슨스케쥴">
+  <title>레슨 스케쥴</title>
+  <!-- 홈 화면 아이콘 (스카이블루 배경 + 얼음 이모지 + 레슨스케쥴 텍스트) -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxODAgMTgwIiB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCI+CjxyZWN0IHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIiBmaWxsPSIjMGVhNWU5Ii8+Cjx0ZXh0IHg9IjkwIiB5PSI3NiIgZm9udC1zaXplPSI1NiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+8J+nijwvdGV4dD4KPHRleHQgeD0iOTAiIHk9IjEyNSIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNTeXN0ZW1Gb250LEFwcGxlIFNEIEdvdGhpYyBOZW8sc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuugiOyKqDwvdGV4dD4KPHRleHQgeD0iOTAiIHk9IjE1MyIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNTeXN0ZW1Gb250LEFwcGxlIFNEIEdvdGhpYyBOZW8sc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuyKpOy8gOyltDwvdGV4dD4KPC9zdmc+">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxODAgMTgwIiB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCI+CjxyZWN0IHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIiBmaWxsPSIjMGVhNWU5Ii8+Cjx0ZXh0IHg9IjkwIiB5PSI3NiIgZm9udC1zaXplPSI1NiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+8J+nijwvdGV4dD4KPHRleHQgeD0iOTAiIHk9IjEyNSIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNTeXN0ZW1Gb250LEFwcGxlIFNEIEdvdGhpYyBOZW8sc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuugiOyKqDwvdGV4dD4KPHRleHQgeD0iOTAiIHk9IjE1MyIgZm9udC1mYW1pbHk9Ii1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNTeXN0ZW1Gb250LEFwcGxlIFNEIEdvdGhpYyBOZW8sc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuyKpOy8gOyltDwvdGV4dD4KPC9zdmc+">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -438,7 +441,14 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function fmtDate(d) { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }); }
 function fmtFullDate(d) { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('ko-KR'); }
 function fmtMoney(n) { return (n||0).toLocaleString('ko-KR') + '원'; }
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+function todayISO() {
+  // 로컬(한국시간) 기준 YYYY-MM-DD 반환 — toISOString은 UTC라 자정~9시에 하루 밀림
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 function ymOf(date) { return (date||'').slice(0, 7); }
 function thisYM() { return todayISO().slice(0, 7); }
 function sportEmoji(s) { for (const k in SPORT_EMOJI) if (s.includes(k)) return SPORT_EMOJI[k]; return '🎯'; }
@@ -1294,6 +1304,32 @@ function getStudentColor(s) {
   for (let i = 0; i < s.name.length; i++) hash = (hash * 31 + s.name.charCodeAt(i)) >>> 0;
   return STUDENT_COLORS[hash % STUDENT_COLORS.length];
 }
+// 학생별로 "오늘 이후 남은 횟수만큼"의 예정 날짜 Set 생성
+function getStudentFutureSchedule(student) {
+  if (!student.currentCycle) return new Set();
+  const c = student.currentCycle;
+  const days = c.lessonDays || [];
+  if (!days.length) return new Set();
+  const remaining = Math.max(0, (c.total || 0) - attendedCount(c));
+  if (remaining === 0) return new Set();
+  const result = new Set();
+  const todayStr = todayISO();
+  const today = new Date(todayStr + 'T00:00:00');
+  const start = c.startDate ? new Date(c.startDate + 'T00:00:00') : today;
+  let cursor = today > start ? new Date(today) : new Date(start);
+  let count = 0;
+  let safety = 0;
+  while (count < remaining && safety < 1000) {
+    if (days.includes(cursor.getDay())) {
+      const key = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-${String(cursor.getDate()).padStart(2,'0')}`;
+      result.add(key);
+      count++;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+    safety++;
+  }
+  return result;
+}
 function renderCalendar() {
   const y = calMonth.getFullYear();
   const m = calMonth.getMonth();
@@ -1302,6 +1338,11 @@ function renderCalendar() {
   const startDow = firstDay.getDay();
   const daysInMonth = lastDay.getDate();
   document.getElementById('cal-month-label').textContent = `${y}년 ${m + 1}월`;
+  // 각 학생의 "남은 예정 날짜" 미리 계산 (캐시)
+  const futureMap = new Map();
+  for (const s of state.students) {
+    futureMap.set(s.id, getStudentFutureSchedule(s));
+  }
   let cells = [];
   for (let i = 0; i < startDow; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -1313,11 +1354,16 @@ function renderCalendar() {
     const date = new Date(y, m, d);
     const dow = date.getDay();
     const isToday = dateStr === todayStr;
-    // 예정된 학생 (현재 사이클 + 해당 요일 + 시작일 이후)
+    // 예정된 학생 (현재 사이클 + 해당 요일 + 시작일 이후 + 남은 횟수 안)
     const scheduled = state.students.filter(s => {
       if (!s.currentCycle) return false;
       if (!(s.currentCycle.lessonDays || []).includes(dow)) return false;
       if (s.currentCycle.startDate && dateStr < s.currentCycle.startDate) return false;
+      // 미래 날짜는 남은 횟수 안에 있을 때만 표시
+      if (dateStr > todayStr) {
+        const future = futureMap.get(s.id);
+        if (!future || !future.has(dateStr)) return false;
+      }
       return true;
     }).sort((a,b) => {
       const ta = (getCycleTimes(a.currentCycle)[0]) || 'zz';
@@ -1375,10 +1421,16 @@ function openDayModal(dateStr) {
   const date = new Date(dateStr);
   const dow = date.getDay();
   const dowLabel = DAY_LABELS[dow];
+  const todayStr = todayISO();
   const scheduled = state.students.filter(s => {
     if (!s.currentCycle) return false;
     if (!(s.currentCycle.lessonDays || []).includes(dow)) return false;
     if (s.currentCycle.startDate && dateStr < s.currentCycle.startDate) return false;
+    // 미래 날짜는 남은 횟수 안에 있을 때만
+    if (dateStr > todayStr) {
+      const future = getStudentFutureSchedule(s);
+      if (!future.has(dateStr)) return false;
+    }
     return true;
   });
   // 예정 외에 실제 기록만 있는 학생도 포함 (보강 등)
