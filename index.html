@@ -306,12 +306,12 @@ const UNLOCK_DAYS = 30; // 한 번 잠금해제 후 며칠 동안 유지할지
 const SUPABASE_URL = 'https://gpzgwcjtfsyvgicreiut.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdwemd3Y2p0ZnN5dmdpY3JlaXV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTU0MTUsImV4cCI6MjA5MzgzMTQxNX0.CkMxwCCmeNTVDp7kUhlKqk2gIsKegXUPN2oJBB0Z0ec';
 // 안전하게 초기화 — 설정이 잘못돼도 앱은 로컬로 작동함
-let supabase = null;
+let sbClient = null;
 try {
   const urlOk = SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE' && SUPABASE_URL.startsWith('http');
   const keyOk = SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY_HERE' && SUPABASE_ANON_KEY.length > 20;
   if (urlOk && keyOk && window.supabase && window.supabase.createClient) {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     console.log('☁️ Supabase 연결됨');
   } else {
     console.warn('⚠️ Supabase 설정 미완료 — 로컬 모드로 작동');
@@ -383,9 +383,9 @@ async function load() {
   await syncFromCloud();
 }
 async function syncFromCloud() {
-  if (!supabase) return; // Supabase 미설정 시 스킵
+  if (!sbClient) return; // Supabase 미설정 시 스킵
   try {
-    const { data, error } = await supabase
+    const { data, error } = await sbClient
       .from('app_data').select('data').eq('id', 1).single();
     if (error) throw error;
     const cloud = data?.data || {};
@@ -412,9 +412,9 @@ async function syncFromCloud() {
 }
 let saveTimer = null;
 async function pushToCloud() {
-  if (!supabase) return; // Supabase 미설정 시 스킵
+  if (!sbClient) return; // Supabase 미설정 시 스킵
   try {
-    const { error } = await supabase
+    const { error } = await sbClient
       .from('app_data')
       .upsert({ id: 1, data: state, updated_at: new Date().toISOString() });
     if (error) throw error;
