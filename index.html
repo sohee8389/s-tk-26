@@ -149,14 +149,9 @@
         <div class="grid grid-cols-7 gap-1" id="day-picker"></div>
       </div>
       <div>
-        <label class="block text-xs font-medium text-slate-600 mb-1">수업 시간</label>
-        <div class="grid grid-cols-4 gap-1.5" id="time-picker">
-          <button type="button" onclick="setLessonTime('15:00')" data-time="15:00" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">오후 3시</button>
-          <button type="button" onclick="setLessonTime('16:00')" data-time="16:00" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">오후 4시</button>
-          <button type="button" onclick="setLessonTime('17:00')" data-time="17:00" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">오후 5시</button>
-          <button type="button" onclick="setLessonTimeCustom()" data-time="custom" class="time-btn px-2 py-2 rounded-lg border text-sm font-medium">기타</button>
-        </div>
-        <div id="custom-time-display" class="text-xs text-slate-500 mt-1 hidden"></div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">요일별 수업 시간</label>
+        <div id="schedule-picker" class="space-y-2"></div>
+        <p id="schedule-picker-hint" class="text-[11px] text-slate-400 mt-1">요일을 먼저 선택하면 요일별로 시간을 고를 수 있어요</p>
       </div>
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">이미 완료한 회차</label>
@@ -348,7 +343,8 @@ let attendCtx = { studentId: null, status: null };
 let currentView = 'cards';
 let calMonth = new Date(); calMonth.setDate(1);
 let selectedDays = []; // 학생 폼 요일 picker용
-let selectedTimes = []; // 학생 폼 시간 picker용 (다중 선택, 예: ['15:00','16:00'])
+let selectedTimes = []; // 학생 폼 시간 picker용 (다중 선택, 예: ['15:00','16:00']) — 모든 요일 공통일 때 사용 (구버전 호환)
+let selectedSchedule = {}; // 요일별 시간, 예: {1:['15:00'], 4:['15:00','16:00']} — 신버전
 // ============================================
 // PERSISTENCE
 // ============================================
@@ -358,9 +354,34 @@ function migrateData(data) {
     const cycles = [...(s.history || [])];
     if (s.currentCycle) cycles.push(s.currentCycle);
     cycles.forEach(c => {
+      // 구버전: lessonTime (단일) → lessonTimes (배열)
       if (c.lessonTime && !c.lessonTimes) {
         c.lessonTimes = [c.lessonTime];
         delete c.lessonTime;
+      }
+      // 구버전: lessonTimes + lessonDays → lessonSchedule (요일별)
+      const days = c.lessonDays || [];
+      const times = c.lessonTimes || [];
+      const hasSchedule = c.lessonSchedule && Object.keys(c.lessonSchedule).length > 0;
+      if (!hasSchedule && days.length) {
+        c.lessonSchedule = {};
+        days.forEach(d => { c.lessonSchedule[d] = [...times]; });
+      } else if (hasSchedule) {
+        // schedule이 있지만 lessonDays와 동기화 안 됐으면 schedule을 진실로
+        const schedDays = Object.keys(c.lessonSchedule).map(Number);
+        // 만약 외부에서 days만 바뀐 경우 (구버전 코드가 편집): days를 기반으로 schedule 재구성
+        const daysSorted = [...days].sort((a,b)=>a-b).join(',');
+        const schedSorted = [...schedDays].sort((a,b)=>a-b).join(',');
+        if (daysSorted !== schedSorted && days.length) {
+          // 옛 코드가 lessonDays/lessonTimes만 업데이트한 경우 — schedule 재구성
+          const newSched = {};
+          days.forEach(d => {
+            newSched[d] = c.lessonSchedule[d] && c.lessonSchedule[d].length
+              ? [...c.lessonSchedule[d]]
+              : [...times];
+          });
+          c.lessonSchedule = newSched;
+        }
       }
     });
   });
@@ -590,7 +611,7 @@ function renderStudentCard(s) {
         <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${pct}%"></div>
       </div>
       <div class="flex items-center justify-between text-xs text-slate-500 gap-2">
-        <span class="truncate">${c.label || ''}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}${getCycleTimes(c).length ? ' · ' + formatTimes(getCycleTimes(c)) : ''}</span>
+        <span class="truncate">${c.label || ''}${formatScheduleSummary(getCycleSchedule(c)) ? ' · ' + formatScheduleSummary(getCycleSchedule(c)) : (c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : '')}</span>
         <span class="shrink-0">${lastDate ? '최근 ' + fmtDate(lastDate) : '시작 ' + fmtDate(c.startDate)}</span>
       </div>
     </div>
@@ -629,6 +650,7 @@ function openAddStudentModal() {
   populatePackageSelect('student-package');
   updatePriceFromPackage();
   selectedDays = [];
+  selectedSchedule = {};
   renderDayPicker();
   selectedTimes = [];
   renderTimePicker();
@@ -652,7 +674,14 @@ function openEditStudentModal(id) {
   document.getElementById('student-memo').value = s.memo || '';
   document.getElementById('student-paid').checked = s.currentCycle ? !!s.currentCycle.paid : true;
   document.getElementById('student-baseline').value = s.currentCycle && s.currentCycle.baselineAttended ? s.currentCycle.baselineAttended : 0;
-  selectedDays = (s.currentCycle && s.currentCycle.lessonDays) ? [...s.currentCycle.lessonDays] : [];
+  // 신/구버전 모두 지원: lessonSchedule 우선, 없으면 days+times로 동일하게 채움
+  const editSched = getCycleSchedule(s.currentCycle);
+  selectedSchedule = {};
+  Object.keys(editSched).forEach(d => { selectedSchedule[Number(d)] = [...(editSched[d] || [])]; });
+  selectedDays = Object.keys(selectedSchedule).map(Number);
+  if (!selectedDays.length && s.currentCycle && s.currentCycle.lessonDays) {
+    selectedDays = [...s.currentCycle.lessonDays];
+  }
   renderDayPicker();
   selectedTimes = getCycleTimes(s.currentCycle);
   renderTimePicker();
@@ -716,19 +745,34 @@ function submitStudentForm() {
       s.currentCycle.entryFee = entryFee;
       s.currentCycle.paid = paid;
       s.currentCycle.paidDate = paid ? (s.currentCycle.paidDate || todayISO()) : null;
-      s.currentCycle.lessonDays = [...selectedDays].sort((a,b)=>a-b);
-      s.currentCycle.lessonTimes = [...selectedTimes].sort();
+      // 요일별 schedule이 새 진실 — 여기서 lessonDays/lessonTimes도 파생 저장 (구버전 호환)
+      const editSchedClean = {};
+      [...selectedDays].sort((a,b)=>a-b).forEach(d => {
+        editSchedClean[d] = (selectedSchedule[d] || []).slice().sort();
+      });
+      s.currentCycle.lessonSchedule = editSchedClean;
+      s.currentCycle.lessonDays = Object.keys(editSchedClean).map(Number).sort((a,b)=>a-b);
+      const editTimesUnion = new Set();
+      Object.values(editSchedClean).forEach(arr => arr.forEach(t => editTimesUnion.add(t)));
+      s.currentCycle.lessonTimes = [...editTimesUnion].sort();
       delete s.currentCycle.lessonTime; // 옛 필드 제거
       s.currentCycle.baselineAttended = baselineAttended;
       showToast('수정됨');
     } else {
       // 재등록: 기존 학생에게 새 사이클 부여 (reEnroll에서 currentCycle을 null로 비워둠)
+      const reSchedClean = {};
+      [...selectedDays].sort((a,b)=>a-b).forEach(d => {
+        reSchedClean[d] = (selectedSchedule[d] || []).slice().sort();
+      });
+      const reTimesUnion = new Set();
+      Object.values(reSchedClean).forEach(arr => arr.forEach(t => reTimesUnion.add(t)));
       s.currentCycle = {
         id: uid(),
         packageId: pkgId, label: pkg.label, total: pkg.total,
         startDate, lessonFee, entryFee,
-        lessonDays: [...selectedDays].sort((a,b)=>a-b),
-        lessonTimes: [...selectedTimes].sort(),
+        lessonSchedule: reSchedClean,
+        lessonDays: Object.keys(reSchedClean).map(Number).sort((a,b)=>a-b),
+        lessonTimes: [...reTimesUnion].sort(),
         baselineAttended,
         lessons: [],
         paid, paidDate: paid ? todayISO() : null,
@@ -740,6 +784,12 @@ function submitStudentForm() {
     }
   } else {
     // 신규
+    const newSchedClean = {};
+    [...selectedDays].sort((a,b)=>a-b).forEach(d => {
+      newSchedClean[d] = (selectedSchedule[d] || []).slice().sort();
+    });
+    const newTimesUnion = new Set();
+    Object.values(newSchedClean).forEach(arr => arr.forEach(t => newTimesUnion.add(t)));
     const newStudent = {
       id: uid(),
       name, sport, contact, guardian, memo,
@@ -747,8 +797,9 @@ function submitStudentForm() {
         id: uid(),
         packageId: pkgId, label: pkg.label, total: pkg.total,
         startDate, lessonFee, entryFee,
-        lessonDays: [...selectedDays].sort((a,b)=>a-b),
-        lessonTimes: [...selectedTimes].sort(),
+        lessonSchedule: newSchedClean,
+        lessonDays: Object.keys(newSchedClean).map(Number).sort((a,b)=>a-b),
+        lessonTimes: [...newTimesUnion].sort(),
         baselineAttended,
         lessons: [],
         paid, paidDate: paid ? todayISO() : null,
@@ -821,7 +872,7 @@ function openDetailModal(id) {
         <div class="h-full ${done ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${total ? Math.min(100, attended*100/total) : 0}%"></div>
       </div>
       <div class="flex items-center justify-between text-xs text-slate-500 gap-2">
-        <span class="truncate">시작: ${fmtFullDate(c.startDate)}${c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : ''}${getCycleTimes(c).length ? ' · ' + formatTimes(getCycleTimes(c)) : ''}</span>
+        <span class="truncate">시작: ${fmtFullDate(c.startDate)}${formatScheduleSummary(getCycleSchedule(c)) ? ' · ' + formatScheduleSummary(getCycleSchedule(c)) : (c.lessonDays && c.lessonDays.length ? ' · ' + daysToString(c.lessonDays) : '')}</span>
         <span class="shrink-0">${fmtMoney(c.lessonFee)} ${c.paid ? '· 결제완료' : '· 미수금'}</span>
       </div>
       ${c.paid
@@ -962,7 +1013,14 @@ function reEnroll(id) {
   document.getElementById('student-memo').value = s.memo || '';
   document.getElementById('student-paid').checked = true;
   document.getElementById('student-baseline').value = 0;
-  selectedDays = lastCycle && lastCycle.lessonDays ? [...lastCycle.lessonDays] : [];
+  // 이전 사이클의 schedule을 기본값으로
+  const lastSched = getCycleSchedule(lastCycle);
+  selectedSchedule = {};
+  Object.keys(lastSched).forEach(d => { selectedSchedule[Number(d)] = [...(lastSched[d] || [])]; });
+  selectedDays = Object.keys(selectedSchedule).map(Number);
+  if (!selectedDays.length && lastCycle && lastCycle.lessonDays) {
+    selectedDays = [...lastCycle.lessonDays];
+  }
   renderDayPicker();
   selectedTimes = getCycleTimes(lastCycle);
   renderTimePicker();
@@ -1170,9 +1228,19 @@ function renderDayPicker() {
   }).join('');
 }
 function toggleDay(d) {
-  if (selectedDays.includes(d)) selectedDays = selectedDays.filter(x => x !== d);
-  else selectedDays.push(d);
+  if (selectedDays.includes(d)) {
+    selectedDays = selectedDays.filter(x => x !== d);
+    delete selectedSchedule[d];
+  } else {
+    selectedDays.push(d);
+    if (!selectedSchedule[d]) {
+      // 새 요일 추가 시 — 다른 요일의 시간 패턴이 있으면 그대로 따라가기
+      const anyDay = Object.keys(selectedSchedule).find(k => (selectedSchedule[k] || []).length);
+      selectedSchedule[d] = anyDay ? [...selectedSchedule[anyDay]] : [];
+    }
+  }
   renderDayPicker();
+  renderTimePicker();
 }
 function daysToString(days) {
   if (!days || !days.length) return '';
@@ -1222,73 +1290,138 @@ function shortTimes(times) {
   return times.slice().sort().map(t => shortTime(t)).join('·');
 }
 function getCycleTimes(cycle) {
+  // 모든 요일 시간들의 union (호환용)
+  if (cycle && cycle.lessonSchedule) {
+    const all = new Set();
+    Object.values(cycle.lessonSchedule).forEach(arr => (arr || []).forEach(t => all.add(t)));
+    if (all.size) return [...all].sort();
+  }
   if (cycle && cycle.lessonTimes && cycle.lessonTimes.length) return cycle.lessonTimes;
   if (cycle && cycle.lessonTime) return [cycle.lessonTime];
   return [];
 }
-function renderTimePicker() {
-  const buttons = document.querySelectorAll('#time-picker .time-btn');
-  if (!buttons.length) return;
-  const hasCustom = selectedTimes.some(t => !PRESET_TIMES.includes(t));
-  buttons.forEach(b => {
-    const t = b.dataset.time;
-    let isActive = false;
-    if (t === 'custom') {
-      isActive = hasCustom;
-    } else {
-      isActive = selectedTimes.includes(t);
-    }
-    if (isActive) {
-      b.className = 'time-btn px-2 py-2 rounded-lg border text-sm font-medium bg-sky-500 text-white border-sky-500';
-    } else {
-      b.className = 'time-btn px-2 py-2 rounded-lg border text-sm font-medium bg-white border-slate-300 text-slate-700 hover:bg-slate-50';
-    }
-  });
-  const display = document.getElementById('custom-time-display');
-  if (display) {
-    const customTimes = selectedTimes.filter(t => !PRESET_TIMES.includes(t));
-    if (customTimes.length) {
-      display.textContent = `선택됨: ${customTimes.map(formatTime).join(', ')} (탭해서 해제)`;
-      display.classList.remove('hidden');
-    } else {
-      display.classList.add('hidden');
-    }
-  }
+function getCycleSchedule(cycle) {
+  if (!cycle) return {};
+  if (cycle.lessonSchedule && Object.keys(cycle.lessonSchedule).length) return cycle.lessonSchedule;
+  // 구버전 호환: lessonDays + lessonTimes → 모든 요일 동일 시간
+  const days = cycle.lessonDays || [];
+  const times = getCycleTimes(cycle);
+  const sched = {};
+  days.forEach(d => { sched[d] = [...times]; });
+  return sched;
 }
-function setLessonTime(t) {
-  if (selectedTimes.includes(t)) {
-    selectedTimes = selectedTimes.filter(x => x !== t);
-  } else {
-    selectedTimes.push(t);
-    selectedTimes.sort();
+function getTimesForDate(cycle, dateStr) {
+  if (!cycle) return [];
+  const date = new Date(dateStr + 'T00:00:00');
+  const dow = date.getDay();
+  const sched = getCycleSchedule(cycle);
+  return sched[dow] || [];
+}
+function formatScheduleSummary(schedule) {
+  if (!schedule) return '';
+  const days = Object.keys(schedule).map(Number).filter(d => schedule[d]).sort((a,b)=>a-b);
+  if (!days.length) return '';
+  // 같은 시간 패턴끼리 묶기 (예: 월·화·수 3시·4시 + 목 3시)
+  const groups = [];
+  for (const d of days) {
+    const times = (schedule[d] || []).slice().sort();
+    const key = times.join(',');
+    let g = groups.find(x => x.key === key);
+    if (!g) { g = {key, times, days: []}; groups.push(g); }
+    g.days.push(d);
   }
+  return groups.map(g => {
+    const daysStr = g.days.map(d => DAY_LABELS[d]).join('·');
+    const timesStr = g.times.length ? formatTimes(g.times) : '시간 미정';
+    return `${daysStr} ${timesStr}`;
+  }).join(' / ');
+}
+function formatScheduleShort(schedule) {
+  // 캘린더 칸용 짧은 포맷: "월·화 3시·4시 · 목 3시"
+  if (!schedule) return '';
+  const days = Object.keys(schedule).map(Number).filter(d => schedule[d]).sort((a,b)=>a-b);
+  if (!days.length) return '';
+  const groups = [];
+  for (const d of days) {
+    const times = (schedule[d] || []).slice().sort();
+    const key = times.join(',');
+    let g = groups.find(x => x.key === key);
+    if (!g) { g = {key, times, days: []}; groups.push(g); }
+    g.days.push(d);
+  }
+  return groups.map(g => {
+    const daysStr = g.days.map(d => DAY_LABELS[d]).join('·');
+    return g.times.length ? `${daysStr} ${shortTimes(g.times)}` : daysStr;
+  }).join(' / ');
+}
+function renderTimePicker() {
+  // 요일별 schedule picker 렌더링 (기존 단일 time picker 대체)
+  const picker = document.getElementById('schedule-picker');
+  const hint = document.getElementById('schedule-picker-hint');
+  if (!picker) return;
+  const sortedDays = [...selectedDays].sort((a,b)=>a-b);
+  if (!sortedDays.length) {
+    picker.innerHTML = '';
+    if (hint) hint.classList.remove('hidden');
+    return;
+  }
+  if (hint) hint.classList.add('hidden');
+  picker.innerHTML = sortedDays.map(d => {
+    const times = selectedSchedule[d] || [];
+    const hasCustom = times.some(t => !PRESET_TIMES.includes(t));
+    const customTimes = times.filter(t => !PRESET_TIMES.includes(t));
+    const btn = (time, label) => {
+      const active = times.includes(time);
+      return `<button type="button" onclick="toggleSchedTime(${d},'${time}')" class="px-2 py-1.5 rounded-lg border text-xs font-medium ${active ? 'bg-sky-500 text-white border-sky-500' : 'bg-white border-slate-300 text-slate-700'}">${label}</button>`;
+    };
+    const customBtn = `<button type="button" onclick="addSchedCustomTime(${d})" class="px-2 py-1.5 rounded-lg border text-xs font-medium ${hasCustom ? 'bg-sky-500 text-white border-sky-500' : 'bg-white border-slate-300 text-slate-700'}">기타</button>`;
+    const dayColor = d === 0 ? 'text-rose-500' : d === 6 ? 'text-blue-500' : 'text-slate-700';
+    return `<div class="bg-slate-50 rounded-lg p-2">
+      <div class="text-xs font-semibold mb-1.5 ${dayColor}">${DAY_LABELS[d]}요일${times.length ? ` <span class="text-slate-500 font-normal">· ${formatTimes(times)}</span>` : ' <span class="text-slate-400 font-normal">· 시간 선택</span>'}</div>
+      <div class="grid grid-cols-4 gap-1.5">
+        ${btn('15:00','오후 3시')}
+        ${btn('16:00','오후 4시')}
+        ${btn('17:00','오후 5시')}
+        ${customBtn}
+      </div>
+      ${customTimes.length ? `<div class="text-[11px] text-slate-500 mt-1">기타: ${customTimes.map(formatTime).join(', ')} (탭해서 해제)</div>` : ''}
+    </div>`;
+  }).join('');
+}
+function toggleSchedTime(day, time) {
+  if (!selectedSchedule[day]) selectedSchedule[day] = [];
+  const arr = selectedSchedule[day];
+  const idx = arr.indexOf(time);
+  if (idx >= 0) arr.splice(idx, 1);
+  else { arr.push(time); arr.sort(); }
   renderTimePicker();
 }
-function setLessonTimeCustom() {
-  // 기존 custom 시간이 있으면 해제 옵션 제공
-  const customTimes = selectedTimes.filter(t => !PRESET_TIMES.includes(t));
+function addSchedCustomTime(day) {
+  if (!selectedSchedule[day]) selectedSchedule[day] = [];
+  const arr = selectedSchedule[day];
+  const customTimes = arr.filter(t => !PRESET_TIMES.includes(t));
   if (customTimes.length) {
-    if (confirm(`기존 시간(${customTimes.map(formatTime).join(', ')}) 해제할까요? 취소 누르면 추가로 입력`)) {
-      selectedTimes = selectedTimes.filter(t => PRESET_TIMES.includes(t));
+    if (confirm(`${DAY_LABELS[day]}요일 기존 시간(${customTimes.map(formatTime).join(', ')}) 해제할까요? 취소 누르면 추가로 입력`)) {
+      selectedSchedule[day] = arr.filter(t => PRESET_TIMES.includes(t));
       renderTimePicker();
       return;
     }
   }
-  const input = prompt('추가할 수업 시간 입력 (예: 14:30, 18:00)', '');
+  const input = prompt(`${DAY_LABELS[day]}요일에 추가할 시간 (예: 14:30, 18:00)`, '');
   if (input === null || input.trim() === '') return;
-  if (!/^\d{1,2}:\d{2}$/.test(input.trim())) {
-    alert('형식이 잘못됐어요. 예: 14:30');
-    return;
-  }
+  if (!/^\d{1,2}:\d{2}$/.test(input.trim())) { alert('형식이 잘못됐어요. 예: 14:30'); return; }
   const [h, m] = input.trim().split(':').map(Number);
   if (h > 23 || m > 59) { alert('시간 범위가 잘못됐어요'); return; }
   const normalized = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-  if (!selectedTimes.includes(normalized)) {
-    selectedTimes.push(normalized);
-    selectedTimes.sort();
+  if (!arr.includes(normalized)) {
+    arr.push(normalized);
+    arr.sort();
   }
   renderTimePicker();
 }
+// 옛 함수 호환 (다른 곳에서 호출될 경우)
+function setLessonTime(t) {}
+function setLessonTimeCustom() {}
 // ============================================
 // 뷰 전환 (Cards / Calendar)
 // ============================================
@@ -1382,8 +1515,8 @@ function renderCalendar() {
       }
       return true;
     }).sort((a,b) => {
-      const ta = (getCycleTimes(a.currentCycle)[0]) || 'zz';
-      const tb = (getCycleTimes(b.currentCycle)[0]) || 'zz';
+      const ta = (getTimesForDate(a.currentCycle, dateStr)[0]) || 'zz';
+      const tb = (getTimesForDate(b.currentCycle, dateStr)[0]) || 'zz';
       return ta.localeCompare(tb);
     });
     // 실제 출석 기록 (현재 사이클 + 이전 사이클 모두)
@@ -1402,12 +1535,12 @@ function renderCalendar() {
     const items = [];
     for (const x of recordedItems) {
       const sym = x.lesson.status === 'attended' ? '✓' : x.lesson.status === 'makeup' ? '＋' : '✗';
-      const ts = getCycleTimes(x.student.currentCycle);
+      const ts = getTimesForDate(x.student.currentCycle, dateStr);
       items.push({name: x.student.name, color: getStudentColor(x.student), symbol: sym, recorded: true, times: ts, sortKey: ts[0] || 'zz'});
     }
     for (const s of scheduled) {
       if (!recordedIds.has(s.id)) {
-        const ts = getCycleTimes(s.currentCycle);
+        const ts = getTimesForDate(s.currentCycle, dateStr);
         items.push({name: s.name, color: getStudentColor(s), symbol: '', recorded: false, times: ts, sortKey: ts[0] || 'zz'});
       }
     }
@@ -1449,12 +1582,28 @@ function openDayModal(dateStr) {
     }
     return true;
   });
-  // 예정 외에 실제 기록만 있는 학생도 포함 (보강 등)
+  // 예정 외에 실제 기록만 있는 학생도 포함 (보강 등) — 현재 + 이전 사이클 모두
   const recordsByStudent = {};
   for (const s of state.students) {
-    if (!s.currentCycle) continue;
-    const l = (s.currentCycle.lessons || []).find(l => l.date === dateStr);
-    if (l) recordsByStudent[s.id] = l;
+    // 1) 현재 사이클 우선
+    if (s.currentCycle) {
+      const l = (s.currentCycle.lessons || []).find(l => l.date === dateStr);
+      if (l) {
+        recordsByStudent[s.id] = {lesson: l, cycleSource: 'current'};
+        continue;
+      }
+    }
+    // 2) 이전 사이클들 (history) — 최신 history부터
+    if (s.history && s.history.length) {
+      for (let i = s.history.length - 1; i >= 0; i--) {
+        const h = s.history[i];
+        const l = (h.lessons || []).find(l => l.date === dateStr);
+        if (l) {
+          recordsByStudent[s.id] = {lesson: l, cycleSource: 'history', cycleId: h.id};
+          break;
+        }
+      }
+    }
   }
   const allStudentIds = new Set([...scheduled.map(s => s.id), ...Object.keys(recordsByStudent)]);
   const allStudents = state.students.filter(s => allStudentIds.has(s.id));
@@ -1472,7 +1621,9 @@ function openDayModal(dateStr) {
   } else {
     html += '<div class="space-y-2">';
     for (const s of allStudents) {
-      const rec = recordsByStudent[s.id];
+      const recInfo = recordsByStudent[s.id]; // {lesson, cycleSource, cycleId?} 또는 undefined
+      const rec = recInfo ? recInfo.lesson : null;
+      const isHistory = recInfo && recInfo.cycleSource === 'history';
       const c = s.currentCycle;
       const attended = c ? attendedCount(c) : 0;
       const total = c ? c.total : 0;
@@ -1483,7 +1634,8 @@ function openDayModal(dateStr) {
         const colors = {attended:'bg-emerald-100 text-emerald-700', makeup:'bg-blue-100 text-blue-700', missed:'bg-rose-100 text-rose-700'};
         statusBadge = `<span class="badge ${colors[rec.status]}">${labels[rec.status]}</span>`;
       }
-      const timeLabel = c ? formatTimes(getCycleTimes(c)) : '';
+      const timeLabel = c ? formatTimes(getTimesForDate(c, dateStr)) : '';
+      const historyBadge = isHistory ? `<span class="badge bg-slate-200 text-slate-600">이전 사이클</span>` : '';
       html += `
         <div class="bg-slate-50 rounded-xl p-3">
           <div class="flex items-center justify-between mb-2 flex-wrap gap-1">
@@ -1493,13 +1645,17 @@ function openDayModal(dateStr) {
               ${timeLabel ? `<span class="text-xs text-slate-500">${timeLabel}</span>` : ''}
               <span class="text-xs text-slate-400">${attended}/${total}</span>
             </div>
-            ${statusBadge}
+            <div class="flex gap-1 flex-wrap">${historyBadge}${statusBadge}</div>
           </div>
-          <div class="grid grid-cols-3 gap-1.5">
-            <button onclick="recordOnDay('${s.id}','${dateStr}','attended')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='attended'?'bg-emerald-500 text-white':'bg-white border border-slate-300 hover:bg-emerald-50'}">출석</button>
-            <button onclick="recordOnDay('${s.id}','${dateStr}','makeup')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='makeup'?'bg-blue-500 text-white':'bg-white border border-slate-300 hover:bg-blue-50'}">보강</button>
-            <button onclick="recordOnDay('${s.id}','${dateStr}','missed')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='missed'?'bg-rose-500 text-white':'bg-white border border-slate-300 hover:bg-rose-50'}">결석</button>
-          </div>
+          ${isHistory ? `
+            <div class="text-[11px] text-slate-500 mb-1.5">⚠️ 이전 사이클의 기록이에요. 잘못된 기록이면 삭제할 수 있어요.</div>
+          ` : `
+            <div class="grid grid-cols-3 gap-1.5">
+              <button onclick="recordOnDay('${s.id}','${dateStr}','attended')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='attended'?'bg-emerald-500 text-white':'bg-white border border-slate-300 hover:bg-emerald-50'}">출석</button>
+              <button onclick="recordOnDay('${s.id}','${dateStr}','makeup')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='makeup'?'bg-blue-500 text-white':'bg-white border border-slate-300 hover:bg-blue-50'}">보강</button>
+              <button onclick="recordOnDay('${s.id}','${dateStr}','missed')" class="px-2 py-1.5 rounded-lg text-xs font-medium ${rec && rec.status==='missed'?'bg-rose-500 text-white':'bg-white border border-slate-300 hover:bg-rose-50'}">결석</button>
+            </div>
+          `}
           ${rec ? `<button onclick="clearDayRecord('${s.id}','${dateStr}')" class="mt-1.5 text-xs text-slate-400 hover:text-rose-500">기록 삭제</button>` : ''}
         </div>
       `;
@@ -1527,12 +1683,26 @@ function recordOnDay(studentId, dateStr, status) {
 }
 function clearDayRecord(studentId, dateStr) {
   const s = state.students.find(x => x.id === studentId);
-  if (!s || !s.currentCycle) return;
-  s.currentCycle.lessons = s.currentCycle.lessons.filter(l => l.date !== dateStr);
+  if (!s) return;
+  let removed = false;
+  // 현재 사이클 먼저
+  if (s.currentCycle) {
+    const before = (s.currentCycle.lessons || []).length;
+    s.currentCycle.lessons = (s.currentCycle.lessons || []).filter(l => l.date !== dateStr);
+    if (s.currentCycle.lessons.length < before) removed = true;
+  }
+  // 안 지워졌으면 이전 사이클들도 검색
+  if (!removed && s.history && s.history.length) {
+    for (const h of s.history) {
+      const before = (h.lessons || []).length;
+      h.lessons = (h.lessons || []).filter(l => l.date !== dateStr);
+      if (h.lessons.length < before) { removed = true; break; }
+    }
+  }
   save();
   renderCalendar();
   openDayModal(dateStr);
-  showToast('기록 삭제됨');
+  showToast(removed ? '기록 삭제됨' : '기록을 찾지 못했어요');
   renderHeaderStats(); renderStats(); renderAlerts();
 }
 // ============================================
