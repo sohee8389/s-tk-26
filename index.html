@@ -858,6 +858,7 @@ function openDetailModal(id) {
           <h2 class="text-xl font-bold">${escapeHTML(s.name)}</h2>
         </div>
         <div class="text-sm text-slate-500">${escapeHTML(s.sport)}${s.guardian ? ' · ' + escapeHTML(s.guardian) : ''}${s.contact ? ' · ' + escapeHTML(s.contact) : ''}</div>
+        ${getStudentTenureBadge(s)}       
         ${s.memo ? `<div class="text-xs text-slate-400 mt-1">📝 ${escapeHTML(s.memo)}</div>` : ''}
       </div>
       <button onclick="closeModal('modal-detail')" class="text-slate-400 text-2xl leading-none">×</button>
@@ -1289,7 +1290,34 @@ function shortTimes(times) {
   if (!times || !times.length) return '';
   return times.slice().sort().map(t => shortTime(t)).join('·');
 }
-function getCycleTimes(cycle) {
+function getStudentTenureBadge(s) {
+  // 첫 시작일 = history 중 가장 오래된 사이클 시작일 (없으면 현재 사이클 시작일)
+  const cycles = [...(s.history || [])];
+  if (s.currentCycle) cycles.push(s.currentCycle);
+  if (!cycles.length) return '';
+  const startDates = cycles.map(c => c.startDate).filter(Boolean).sort();
+  if (!startDates.length) return '';
+  const firstStart = startDates[0];
+  // 누적 출석·보강 회수 (모든 사이클 합산 + baseline 포함)
+  let totalAttended = 0;
+  if (s.currentCycle) totalAttended += attendedCount(s.currentCycle);
+  (s.history || []).forEach(h => {
+    totalAttended += (h.baselineAttended || 0) + (h.lessons || []).filter(l => l.status === 'attended' || l.status === 'makeup').length;
+  });
+  // 첫 시작 ~ 오늘까지 몇 개월차인지 (시작한 달 = 1개월차)
+  const start = new Date(firstStart + 'T00:00:00');
+  const now = new Date();
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1;
+  if (months < 1) months = 1;
+  const totalCycles = cycles.length;
+  return `<div class="mt-1.5 flex flex-wrap gap-1 text-[11px]">
+    <span class="badge bg-sky-100 text-sky-700">📅 ${months}개월차</span>
+    <span class="badge bg-emerald-100 text-emerald-700">✅ 누적 ${totalAttended}회</span>
+    <span class="badge bg-slate-100 text-slate-600">🔁 ${totalCycles}번째 사이클</span>
+    <span class="text-slate-400 self-center">${fmtFullDate(firstStart)} 시작</span>
+  </div>`;
+}
+  function getCycleTimes(cycle) {
   // 모든 요일 시간들의 union (호환용)
   if (cycle && cycle.lessonSchedule) {
     const all = new Set();
