@@ -59,7 +59,7 @@
       <div class="text-xl font-bold text-rose-600" id="stat-unpaid">0원</div>
     </div>
     <div class="bg-white rounded-xl p-3 border border-indigo-200">
-      <div class="text-[11px] text-indigo-600 mb-1">💰 회사 급여 (10일 입금)</div>
+      <div class="text-[11px] text-indigo-600 mb-1">💰 이번달 매출 (다음달 10일 입금)</div>
       <div class="text-xl font-bold text-indigo-700" id="stat-payroll">0원</div>
     </div>
   </section>
@@ -434,8 +434,8 @@ function getMonthlyBreakdown(year, month) {
   return { trial, group, sharpen };
 }
 function getCurrentPayrollAmount() {
-  const now = new Date(); const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return getMonthlyCompanyIncome(prev.getFullYear(), prev.getMonth());
+  const now = new Date();
+  return getMonthlyCompanyIncome(now.getFullYear(), now.getMonth());
 }
 // RENDER
 function render() {
